@@ -13,11 +13,6 @@ namespace backend.Controllers
     [RoutePrefix("api/compras/reportes/historico")]
     public class ReporteHistoricoController : ApiController
     {
-        private static readonly string[] RolesPermitidos = new[]
-        {
-            "administrador", "administradora", "admin", "comprador", "compradora", "contador", "contadora"
-        };
-
         [HttpGet]
         [Route("")]
         [Route("~/api/reportes/historico-compras")]
@@ -77,7 +72,7 @@ namespace backend.Controllers
             {
                 using (var conn = DbConnectionFactory.CreateConnection())
                 {
-                    SessionAccess.RequireUser(new HttpRequestWrapper(HttpContext.Current.Request), conn, RolesPermitidos);
+                    SessionAccess.RequireModule(new HttpRequestWrapper(HttpContext.Current.Request), conn, "compras", SecurityPolicy.Read);
 
                     decimal diasTotales = (decimal)(hastaDate.Date - desdeDate.Date).TotalDays;
                     decimal mesesRango = diasTotales <= 30m ? 1m : Math.Round(diasTotales / 30.4167m, 2);

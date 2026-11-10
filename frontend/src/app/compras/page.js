@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/AuthProvider";
+import { moduleAccessLevel } from "@/lib/module-access";
 import ErpModuleShell from "@/components/ErpModuleShell";
 import ComprasNav from "@/components/ComprasNav";
 import ErpIcon from "@/components/ErpIcon";
@@ -325,15 +326,9 @@ export default function OrdenesCompraPage() {
     }
   }
 
-  // Verificación de roles
-  const roleNormalizado = (usuario?.rol || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .trim()
-    .toLowerCase();
-
-  const esAdmin = ["administrador", "administradora", "admin"].includes(roleNormalizado);
-  const puedeCrear = esAdmin || ["comprador", "compradora"].includes(roleNormalizado);
+  const nivelCompras = moduleAccessLevel(usuario, "compras");
+  const puedeAprobar = nivelCompras === 3;
+  const puedeCrear = nivelCompras >= 2;
 
   function getBadgeClass(estado) {
     switch (estado?.toLowerCase()) {
@@ -722,7 +717,7 @@ export default function OrdenesCompraPage() {
                     </div>
                   </div>
 
-                  {/* Acciones de aprobación / rechazo (solo si está pendiente y es admin) */}
+                  {/* Acciones de aprobación / rechazo (requieren permiso total) */}
                   <div
                     style={{
                       display: "flex",
@@ -733,7 +728,7 @@ export default function OrdenesCompraPage() {
                     }}
                   >
                     <div>
-                      {ordenSeleccionada.estado === "pendiente" && esAdmin ? (
+                      {ordenSeleccionada.estado === "pendiente" && puedeAprobar ? (
                         <div style={{ display: "flex", gap: "10px" }}>
                           <button
                             type="button"
@@ -768,7 +763,7 @@ export default function OrdenesCompraPage() {
                             ✕ Rechazar Orden
                           </button>
                         </div>
-                      ) : ordenSeleccionada.estado === "pendiente" && !esAdmin ? (
+                      ) : ordenSeleccionada.estado === "pendiente" && !puedeAprobar ? (
                         <small style={{ color: "var(--color-text-muted)" }}>
                           * Se requiere perfil de Administrador para autorizar o rechazar esta orden.
                         </small>

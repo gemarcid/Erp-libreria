@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Configuration;
 using System.Web.Mvc;
@@ -24,8 +24,7 @@ namespace backend.Controllers
                     "SELECT isbn, titulo, autor, categoria, estante, stock_actual AS stock, stock_minimo AS minimo, precio_venta AS precio FROM LIBRO WHERE activo = TRUE ORDER BY titulo, isbn", conexion))
                 {
                     conexion.Open();
-                    SessionAccess.RequireUser(Request, conexion, "administrador", "administradora", "admin",
-                        "comprador", "compradora", "vendedor", "vendedora", "contador", "contadora");
+                    var user = SessionAccess.RequireModule(Request, conexion, "inventario", SecurityPolicy.Read);
                     using (var lector = comando.ExecuteReader())
                     {
                         while (lector.Read())
@@ -43,6 +42,7 @@ namespace backend.Controllers
                             });
                         }
                     }
+                    SecurityPolicy.Log(conexion, null, user, "inventario", "Consultar inventario", "Listado de libros y stock");
                 }
 
                 // Retornamos los datos en formato JSON para el frontend

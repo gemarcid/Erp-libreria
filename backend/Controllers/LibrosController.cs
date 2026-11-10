@@ -22,7 +22,7 @@ namespace backend.Controllers
             {
                 using (var conn = DbConnectionFactory.CreateConnection())
                 {
-                    SessionAccess.RequireUser(new HttpRequestWrapper(HttpContext.Current.Request), conn, UserAccounts.StaffRoles);
+                    SessionAccess.RequireModule(new HttpRequestWrapper(HttpContext.Current.Request), conn, "inventario", SecurityPolicy.Read);
                     const string sql = @"
                         SELECT l.isbn, l.titulo, l.autor, l.categoria, l.precio_venta, 
                                l.stock_actual, l.stock_minimo, l.activo, e.nombre AS editorial_nombre

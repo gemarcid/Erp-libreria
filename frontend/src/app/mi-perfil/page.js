@@ -6,7 +6,7 @@ import ErpModuleShell from "@/components/ErpModuleShell";
 import { canOpenModule } from "@/lib/module-access";
 
 export default function MiPerfil() {
-  const { usuario, refreshSession } = useAuth();
+  const { usuario, refreshSession, login } = useAuth();
   const [profile, setProfile] = useState(null);
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
@@ -32,7 +32,8 @@ export default function MiPerfil() {
       if (!response.ok) throw new Error(result.error);
       setProfile({ ...profile, nombre: data.nombre, correo: data.correo });
       formElement.reset();
-      await refreshSession();
+      if (data.password) await login(data.correo, data.password);
+      else await refreshSession();
       setMessage("Tu perfil se actualizó correctamente.");
     } catch (err) { setError(err.message); } finally { setSaving(false); }
   }

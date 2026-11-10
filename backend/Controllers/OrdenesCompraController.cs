@@ -14,21 +14,6 @@ namespace backend.Controllers
     {
         private const decimal TasaIva = 0.19m;
 
-        private static readonly string[] RolesLectura = new[]
-        {
-            "administrador", "administradora", "admin", "comprador", "compradora", "contador", "contadora"
-        };
-
-        private static readonly string[] RolesCrear = new[]
-        {
-            "administrador", "administradora", "admin", "comprador", "compradora"
-        };
-
-        private static readonly string[] RolesAprobar = new[]
-        {
-            "administrador", "administradora", "admin"
-        };
-
         [HttpGet]
         [Route("")]
         public IHttpActionResult GetAll(
@@ -43,7 +28,7 @@ namespace backend.Controllers
             {
                 using (var conn = DbConnectionFactory.CreateConnection())
                 {
-                    SessionAccess.RequireUser(new HttpRequestWrapper(HttpContext.Current.Request), conn, RolesLectura);
+                    SessionAccess.RequireModule(new HttpRequestWrapper(HttpContext.Current.Request), conn, "compras", SecurityPolicy.Read);
 
                     string sql = @"
                         SELECT oc.id_oc, oc.id_proveedor, p.razon_social,
@@ -122,7 +107,7 @@ namespace backend.Controllers
             {
                 using (var conn = DbConnectionFactory.CreateConnection())
                 {
-                    SessionAccess.RequireUser(new HttpRequestWrapper(HttpContext.Current.Request), conn, RolesLectura);
+                    SessionAccess.RequireModule(new HttpRequestWrapper(HttpContext.Current.Request), conn, "compras", SecurityPolicy.Read);
 
                     const string sqlHeader = @"
                         SELECT oc.id_oc, oc.id_proveedor, p.razon_social, p.rut AS proveedor_rut,
@@ -283,7 +268,7 @@ namespace backend.Controllers
             {
                 using (var conn = DbConnectionFactory.CreateConnection())
                 {
-                    int userId = SessionAccess.RequireUser(new HttpRequestWrapper(HttpContext.Current.Request), conn, RolesCrear);
+                    int userId = SessionAccess.RequireModule(new HttpRequestWrapper(HttpContext.Current.Request), conn, "compras", SecurityPolicy.Edit);
                     if (userId <= 0 && dto.IdUsuario.HasValue && dto.IdUsuario.Value > 0)
                     {
                         userId = dto.IdUsuario.Value;
@@ -361,6 +346,7 @@ namespace backend.Controllers
                                 }
                             }
 
+                            SecurityPolicy.Log(conn, trans, userId, "compras", "Crear orden de compra", "Orden #" + nuevaOcId);
                             trans.Commit();
                         }
                         catch
@@ -409,20 +395,23 @@ namespace backend.Controllers
             {
                 using (var conn = DbConnectionFactory.CreateConnection())
                 {
-                    SessionAccess.RequireUser(new HttpRequestWrapper(HttpContext.Current.Request), conn, RolesAprobar);
+                    var actor = SessionAccess.RequireModule(new HttpRequestWrapper(HttpContext.Current.Request), conn, "compras", SecurityPolicy.Full);
 
                     const string updateSql = @"
                         UPDATE ORDEN_COMPRA
                         SET estado = 'aprobada'
                         WHERE id_oc = @id AND estado = 'pendiente'";
 
-                    using (var cmd = new MySqlCommand(updateSql, conn))
+                    using (var transaction = conn.BeginTransaction())
+                    using (var cmd = new MySqlCommand(updateSql, conn, transaction))
                     {
                         cmd.Parameters.AddWithValue("@id", id);
                         int rows = cmd.ExecuteNonQuery();
 
                         if (rows > 0)
                         {
+                            SecurityPolicy.Log(conn, transaction, actor, "compras", "Aprobar orden de compra", "Orden #" + id);
+                            transaction.Commit();
                             return Ok(new
                             {
                                 success = true,
@@ -474,20 +463,23 @@ namespace backend.Controllers
             {
                 using (var conn = DbConnectionFactory.CreateConnection())
                 {
-                    SessionAccess.RequireUser(new HttpRequestWrapper(HttpContext.Current.Request), conn, RolesAprobar);
+                    var actor = SessionAccess.RequireModule(new HttpRequestWrapper(HttpContext.Current.Request), conn, "compras", SecurityPolicy.Full);
 
                     const string updateSql = @"
                         UPDATE ORDEN_COMPRA
                         SET estado = 'rechazada'
                         WHERE id_oc = @id AND estado = 'pendiente'";
 
-                    using (var cmd = new MySqlCommand(updateSql, conn))
+                    using (var transaction = conn.BeginTransaction())
+                    using (var cmd = new MySqlCommand(updateSql, conn, transaction))
                     {
                         cmd.Parameters.AddWithValue("@id", id);
                         int rows = cmd.ExecuteNonQuery();
 
                         if (rows > 0)
                         {
+                            SecurityPolicy.Log(conn, transaction, actor, "compras", "Rechazar orden de compra", "Orden #" + id);
+                            transaction.Commit();
                             return Ok(new
                             {
                                 success = true,
@@ -538,7 +530,7 @@ namespace backend.Controllers
             {
                 using (var conn = DbConnectionFactory.CreateConnection())
                 {
-                    SessionAccess.RequireUser(new HttpRequestWrapper(HttpContext.Current.Request), conn, RolesLectura);
+                    SessionAccess.RequireModule(new HttpRequestWrapper(HttpContext.Current.Request), conn, "compras", SecurityPolicy.Read);
 
                     string sql = @"
                         SELECT l.isbn, l.titulo, l.autor, l.categoria, l.costo_unitario,

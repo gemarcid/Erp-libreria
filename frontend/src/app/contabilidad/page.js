@@ -4,19 +4,37 @@ import { Fragment, useEffect, useState } from "react";
 import ErpModuleShell from "@/components/ErpModuleShell";
 import ErpIcon from "@/components/ErpIcon";
 import { useAuth } from "@/components/AuthProvider";
-import { canOpenModule } from "@/lib/module-access";
+import { canOpenModule, moduleAccessLevel } from "@/lib/module-access";
+import AccountingOverview from "./AccountingOverview";
+import AccountingReports from "./AccountingReports";
+import { AccountPlan, AccountingPeriods, AutomaticAccounts, ManualEntry } from "./AccountingManagement";
+import { accountingMoney, buildIncomeStatement, entryPeriod } from "@/lib/accounting-reports";
 import {
-  money,
   dateLabel,
   normalize,
   totals,
 } from "@/lib/module-demo";
 
+const money = (value) => accountingMoney.format(value);
+const screens = [
+  ["journal", "Libro diario"],
+  ["ledger", "Libro mayor"],
+  ["reports", "Reportes"],
+  ["accounts", "Plan de cuentas"],
+  ["automatic", "Cuentas automáticas"],
+  ["manual", "Asiento manual"],
+  ["periods", "Períodos contables"],
+];
+
 export default function Contabilidad() {
   const { usuario } = useAuth();
+  const access = moduleAccessLevel(usuario, "contabilidad");
   const [accounts, setAccounts] = useState([]);
   const [entries, setEntries] = useState([]);
   const [periods, setPeriods] = useState([]);
+  const [automatic, setAutomatic] = useState([]);
+  const [screen, setScreen] = useState("journal");
+  const [loaded, setLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
@@ -46,6 +64,8 @@ export default function Contabilidad() {
         setAccounts(result.accounts);
         setEntries(result.entries);
         setPeriods(result.periods);
+        setAutomatic(result.automatic || []);
+        setLoaded(true);
         setPeriod((current) => {
           if (result.periods.some((item) => item.value === current)) return current;
           const today = new Intl.DateTimeFormat("sv-SE", {
@@ -68,10 +88,10 @@ export default function Contabilidad() {
     };
   }, [usuario, revision]);
   const periodInfo = periods.find((item) => item.value === period);
-  const periodEntries = entries.filter((entry) =>
-    entry.date.startsWith(period),
-  );
+  const periodEntries = entries.filter((entry) => entryPeriod(entry) === period);
   const summary = totals(periodEntries);
+  const statement = buildIncomeStatement(periodEntries, accounts);
+  const refresh = () => setRevision((value) => value + 1);
   const visibleEntries = periodEntries.filter(
     (entry) =>
       (source === "Todos" || entry.source === source) &&
@@ -103,18 +123,18 @@ export default function Contabilidad() {
       "neutral",
     ],
     [
-      "Ingresos por ventas",
-      money(summary.income),
-      "Monto neto del período",
+      "Ingresos del período",
+      money(statement.groups[0].total),
+      "Ingresos según el plan de cuentas",
       "sales",
       "success",
     ],
     [
       "Resultado del período",
-      money(summary.result),
+      money(statement.result),
       "Ingresos menos costos y gastos",
       "trend",
-      summary.result >= 0 ? "success" : "danger",
+      statement.result >= 0 ? "success" : "danger",
     ],
     [
       "Diferencia debe / haber",
@@ -132,8 +152,9 @@ export default function Contabilidad() {
       module="contabilidad"
       liveData
       title="Contabilidad"
-      description="Consulta el resumen contable y el libro diario de cada período."
+      description="Consulta los movimientos, administra los períodos y genera reportes contables."
       actions={
+        ["journal", "ledger", "reports"].includes(screen) && (
         <label className="module-select-label module-accounting-select">
           Período contable
           <select
@@ -151,13 +172,33 @@ export default function Contabilidad() {
             ))}
           </select>
         </label>
+        )
       }
     >
       {error && (
-        <p className="ventas-message ventas-message-error" role="alert">{error}</p>
+        <div className="accounting-actions">
+          <p className="ventas-message ventas-message-error" role="alert">{error}</p>
+          <button className="module-secondary-button" type="button" onClick={refresh}>Reintentar</button>
+        </div>
       )}
+      {loading && <p className="erp-empty" role="status">Cargando datos contables…</p>}
+      <nav className="module-tabs" aria-label="Vistas de contabilidad">
+        {screens.filter(([key]) => key !== "manual" || access >= 2).map(([key, label]) => (
+          <button key={key} type="button" aria-current={screen === key ? "page" : undefined}
+            className={screen === key ? "is-selected" : undefined} onClick={() => setScreen(key)}>{label}</button>
+        ))}
+      </nav>
+      {loaded && !error && <>
+        {(screen === "ledger" || screen === "reports") && <AccountingReports
+          key={screen} mode={screen} entries={periodEntries} allEntries={entries} accounts={accounts}
+          period={period} periodLabel={periodInfo?.label || "Sin período"} />}
+        {screen === "accounts" && <AccountPlan accounts={accounts} onSaved={refresh} canEdit={access >= 2} />}
+        {screen === "automatic" && <AutomaticAccounts automatic={automatic} accounts={accounts} onSaved={refresh} canEdit={access === 3} />}
+        {screen === "manual" && access >= 2 && <ManualEntry accounts={accounts} periods={periods} onSaved={refresh} />}
+        {screen === "periods" && <AccountingPeriods periods={periods} entries={entries} onSaved={refresh} canEdit={access >= 2} canClose={access === 3} />}
+      </>}
+      {screen === "journal" && <>
       {exportError && <p className="ventas-message ventas-message-error" role="alert">{exportError}</p>}
-      {loading && <p className="erp-empty" role="status">Cargando libro diario…</p>}
       <section className="erp-metrics" aria-label="Resumen contable">
         {metricCards.map(([title, value, detail, icon, tone]) => (
           <article className="erp-card erp-metric" key={title}>
@@ -172,7 +213,14 @@ export default function Contabilidad() {
           </article>
         ))}
       </section>
-      <section className="erp-card module-panel">
+      {loaded && !error && <AccountingOverview entries={entries} periodEntries={periodEntries} accounts={accounts} period={period}
+        onEntry={(code) => {
+          setSearch(code);
+          setSource("Todos");
+          setSelected(code);
+          document.getElementById("libro-diario")?.scrollIntoView({ block: "start" });
+        }} />}
+      <section className="erp-card module-panel" id="libro-diario">
         <div className="erp-section-heading">
           <div>
             <p className="erp-eyebrow">REPORTE CONTABLE</p>
@@ -183,7 +231,7 @@ export default function Contabilidad() {
             type="button"
             className="module-secondary-button"
             disabled={loading}
-            onClick={() => setRevision((value) => value + 1)}
+            onClick={refresh}
           >
             Actualizar
           </button>
@@ -298,8 +346,8 @@ export default function Contabilidad() {
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  {entry.lines.map((line) => (
-                                    <tr key={line.account}>
+                                  {entry.lines.map((line, index) => (
+                                    <tr key={line.id ?? index}>
                                       <td>
                                         {line.account} ·{" "}
                                         {
@@ -339,6 +387,7 @@ export default function Contabilidad() {
           {periodInfo?.label || "Sin período"} · {periodInfo?.status || ""} · {loading || error ? "—" : `${visibleEntries.length} de ${periodEntries.length}`} asientos. Importes en pesos chilenos.
         </p>
       </section>
+      </>}
     </ErpModuleShell>
   );
 }

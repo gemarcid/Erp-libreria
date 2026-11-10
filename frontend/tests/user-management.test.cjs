@@ -91,3 +91,43 @@ test("El cliente solo puede abrir Catálogo y Mi perfil; los roles existentes co
   for (const rol of ["Administrador", "Comprador", "Vendedor", "Contador", "Cliente"])
     assert.equal(canOpenModule({ rol }, "perfil"), true);
 });
+
+test("Los permisos de la sesión prevalecen sobre el nombre del rol", async () => {
+  const { canOpenModule, moduleAccessLevel } = await load("lib/module-access.js");
+  const seller = { rol: "Vendedor", permisos: { ventas: 0, compras: 1 } };
+  assert.equal(canOpenModule(seller, "ventas"), false);
+  assert.equal(canOpenModule(seller, "compras"), true);
+  assert.equal(moduleAccessLevel(seller, "compras"), 1);
+});
+
+test("La matriz conserva el control de origen y sólo transmite los campos autorizados", async () => {
+  const route = await load("app/api/administracion/seguridad/route.js", async (url, options) => {
+    assert.equal(url, "/Administracion/GuardarPermiso");
+    assert.equal(options.headers.Authorization, "Bearer admin");
+    assert.deepEqual(Object.fromEntries(options.body), { idRol: "3", modulo: "ventas", nivel: "1" });
+    return upstream(200, { success: true });
+  });
+  const data = { operacion: "permiso", idRol: 3, modulo: "ventas", nivel: 1, correo: "extra@example.test" };
+  assert.equal((await route.POST(request(data))).status, 401);
+  assert.equal((await route.POST(request(data, "admin", "http://otro.test"))).status, 403);
+  assert.equal((await route.POST(request(data, "admin"))).status, 200);
+});
+
+test("Un acceso vencido solicita renovación y sólo emite cookie cuando el cambio se confirma", async () => {
+  const route = await load("app/api/auth/route.js", async (action, options) => {
+    if (action === "Ingresar") return upstream(428, { error: "Tu contraseña venció." });
+    assert.equal(action, "CambiarPassword");
+    assert.equal(options.body.get("newPassword"), "Nueva-clave-123!");
+    return upstream(200, { success: true, sessionToken: "new-token", expiresIn: 3600,
+      usuario: { id_usuario: 7, id_rol: 3, nombre: "Vendedor", rol: "Vendedor", permisos: { ventas: 1 } } });
+  });
+  const credentials = { email: "vendedor@example.test", password: "Anterior-123!" };
+  const expired = await route.POST(request(credentials));
+  assert.equal(expired.status, 428);
+  assert.equal((await expired.json()).requiereCambio, true);
+  assert.match(expired.headers.get("set-cookie"), /Max-Age=0/);
+  const renewed = await route.POST(request({ ...credentials, newPassword: "Nueva-clave-123!" }));
+  assert.equal(renewed.status, 200);
+  assert.match(renewed.headers.get("set-cookie"), /erp_session=new-token/);
+  assert.deepEqual((await renewed.json()).usuario.permisos, { ventas: 1 });
+});

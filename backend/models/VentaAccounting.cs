@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Web;
 using MySql.Data.MySqlClient;
 
@@ -6,6 +7,36 @@ namespace backend.Models
 {
     public static class VentaAccounting
     {
+        internal static readonly (string Key, string Label, string Code, string Name, string Type)[] Rules = {
+            ("efectivo", "Cobro en efectivo", "1.1.01", "Caja", "activo"),
+            ("banco", "Cobro con tarjeta o transferencia", "1.1.02", "Banco", "activo"),
+            ("inventario", "Salida del inventario", "1.1.04", "Inventario de libros", "activo"),
+            ("iva", "IVA débito fiscal", "2.1.02", "IVA débito fiscal", "pasivo"),
+            ("ingreso", "Ingreso neto por ventas", "4.1.01", "Ingresos por ventas", "ingreso"),
+            ("costo", "Costo de libros vendidos", "5.1.01", "Costo de ventas", "gasto"),
+        };
+
+        internal static Dictionary<string, string> ReadRules(MySqlConnection connection, MySqlTransaction transaction)
+        {
+            var accounts = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var rule in Rules) accounts.Add(rule.Key, rule.Code);
+            try
+            {
+                using (var command = new MySqlCommand("SELECT operacion, codigo_cuenta FROM CUENTA_AUTOMATICA", connection, transaction))
+                using (var reader = command.ExecuteReader())
+                    while (reader.Read())
+                    {
+                        var key = reader.GetString(0);
+                        if (accounts.ContainsKey(key)) accounts[key] = reader.GetString(1);
+                    }
+            }
+            catch (MySqlException ex) when (ex.Number == 1146)
+            {
+                // Instalaciones anteriores a la migración mantienen sus cuentas originales.
+            }
+            return accounts;
+        }
+
         // Todo se ejecuta en la misma transacción que VENTA y MOVIMIENTO_STOCK.
         public static int Register(MySqlConnection connection, MySqlTransaction transaction,
             int saleId, int userId, string payment, decimal net, decimal tax, decimal total, decimal cost)
@@ -30,11 +61,22 @@ namespace backend.Models
                     periodId = Convert.ToInt32(reader["id_periodo"]);
                 }
             }
-            using (var command = new MySqlCommand(@"INSERT IGNORE INTO CUENTA_CONTABLE (codigo_cuenta, nombre, tipo) VALUES
-                ('1.1.01', 'Caja', 'activo'), ('1.1.02', 'Banco', 'activo'),
-                ('1.1.04', 'Inventario de libros', 'activo'), ('2.1.02', 'IVA débito fiscal', 'pasivo'),
-                ('4.1.01', 'Ingresos por ventas', 'ingreso'), ('5.1.01', 'Costo de ventas', 'gasto')", connection, transaction))
+            var accounts = ReadRules(connection, transaction);
+            using (var command = new MySqlCommand(@"INSERT IGNORE INTO CUENTA_CONTABLE
+                (codigo_cuenta, nombre, tipo) VALUES (@code, @name, @type)", connection, transaction))
+            {
+                var code = command.Parameters.Add("@code", MySqlDbType.VarChar);
+                var name = command.Parameters.Add("@name", MySqlDbType.VarChar);
+                var type = command.Parameters.Add("@type", MySqlDbType.VarChar);
+                foreach (var rule in Rules)
+                {
+                    if (accounts[rule.Key] != rule.Code) continue;
+                    code.Value = rule.Code;
+                    name.Value = rule.Name;
+                    type.Value = rule.Type;
                 command.ExecuteNonQuery();
+                }
+            }
 
             int entryId;
             using (var command = new MySqlCommand(@"INSERT INTO ASIENTO
@@ -48,12 +90,16 @@ namespace backend.Models
                 entryId = Convert.ToInt32(command.ExecuteScalar());
             }
             using (var command = new MySqlCommand(@"INSERT INTO DETALLE_ASIENTO (id_asiento, codigo_cuenta, debe, haber) VALUES
-                (@entry, @payment, @total, 0), (@entry, '4.1.01', 0, @net),
-                (@entry, '2.1.02', 0, @tax), (@entry, '5.1.01', @cost, 0),
-                (@entry, '1.1.04', 0, @cost)", connection, transaction))
+                (@entry, @payment, @total, 0), (@entry, @incomeAccount, 0, @net),
+                (@entry, @taxAccount, 0, @tax), (@entry, @costAccount, @cost, 0),
+                (@entry, @inventoryAccount, 0, @cost)", connection, transaction))
             {
                 command.Parameters.AddWithValue("@entry", entryId);
-                command.Parameters.AddWithValue("@payment", payment == "efectivo" ? "1.1.01" : "1.1.02");
+                command.Parameters.AddWithValue("@payment", accounts[payment == "efectivo" ? "efectivo" : "banco"]);
+                command.Parameters.AddWithValue("@incomeAccount", accounts["ingreso"]);
+                command.Parameters.AddWithValue("@taxAccount", accounts["iva"]);
+                command.Parameters.AddWithValue("@costAccount", accounts["costo"]);
+                command.Parameters.AddWithValue("@inventoryAccount", accounts["inventario"]);
                 command.Parameters.AddWithValue("@total", total);
                 command.Parameters.AddWithValue("@net", net);
                 command.Parameters.AddWithValue("@tax", tax);

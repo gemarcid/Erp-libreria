@@ -18,10 +18,14 @@ namespace backend.Controllers
                 using (var connection = new MySqlConnection(ConfigurationManager.ConnectionStrings["ConexionMySQL"].ConnectionString))
                 {
                     connection.Open();
-                    SessionAccess.RequireUser(Request, connection, UserAccounts.StaffRoles);
+                    var user = SessionAccess.ReadSession(Request, connection);
+                    if (!SecurityPolicy.IsStaff(user.Role)) return Error(403, "Tu perfil no tiene acceso al inicio interno.");
+                    var permissions = SecurityPolicy.Permissions(connection, user.RoleId, user.Role);
                     var today = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow,
                         TimeZoneInfo.FindSystemTimeZoneById("Pacific SA Standard Time")).Date;
-                    return Json(DashboardData.Load(connection, today), JsonRequestBehavior.AllowGet);
+                    return Json(DashboardData.Load(connection, today,
+                        permissions["ventas"] > 0, permissions["compras"] > 0,
+                        permissions["inventario"] > 0, permissions["contabilidad"] > 0), JsonRequestBehavior.AllowGet);
                 }
             }
             catch (HttpException ex) { return Error(ex.GetHttpCode(), ex.Message); }

@@ -203,6 +203,7 @@
     <Compile Include="Controllers\DashboardController.cs" />
     <Compile Include="Models\DashboardData.cs" />
     <Compile Include="Models\SessionAccess.cs" />
+    <Compile Include="Models\SecurityPolicy.cs" />
     <Compile Include="Models\VentaAccounting.cs" />
     <Compile Include="Global.asax.cs">
       <DependentUpon>Global.asax</DependentUpon>

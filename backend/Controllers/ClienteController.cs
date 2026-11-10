@@ -14,7 +14,7 @@ namespace backend.Controllers
         public JsonResult Catalogo()
         {
             return Execute(connection => {
-                SessionAccess.RequireUser(Request, connection, "cliente", "administrador", "administradora", "admin");
+                var user = SessionAccess.RequireModule(Request, connection, "catalogo", SecurityPolicy.Read);
                 var books = new List<object>();
                 using (var command = new MySqlCommand(@"SELECT isbn, titulo, autor, categoria, precio_venta,
                     stock_actual > 0 AS disponible FROM LIBRO WHERE activo=TRUE ORDER BY titulo,isbn", connection))
@@ -24,6 +24,7 @@ namespace backend.Controllers
                         autor = reader["autor"].ToString(), categoria = reader["categoria"].ToString(),
                         precio = Convert.ToDecimal(reader["precio_venta"]), disponible = Convert.ToBoolean(reader["disponible"])
                     });
+                SecurityPolicy.Log(connection, null, user, "catalogo", "Consultar catálogo", "Listado de libros");
                 return books;
             });
         }
@@ -82,6 +83,8 @@ namespace backend.Controllers
                             command.ExecuteNonQuery();
                         }
                     }
+                    SecurityPolicy.Log(connection, transaction, id, "perfil", "Actualizar perfil",
+                        string.IsNullOrEmpty(password) ? "Datos personales actualizados" : "Datos personales y contraseña actualizados");
                     transaction.Commit();
                     return new { success = true };
                 }

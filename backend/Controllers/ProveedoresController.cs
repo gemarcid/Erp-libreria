@@ -13,11 +13,6 @@ namespace backend.Controllers
     [RoutePrefix("api/proveedores")]
     public class ProveedoresController : ApiController
     {
-        private static readonly string[] RolesPermitidos = new[]
-        {
-            "administrador", "administradora", "admin", "comprador", "compradora"
-        };
-
         [HttpGet]
         [Route("")]
         public IHttpActionResult GetAll([FromUri] string buscar = null)
@@ -28,7 +23,7 @@ namespace backend.Controllers
             {
                 using (var conn = DbConnectionFactory.CreateConnection())
                 {
-                    SessionAccess.RequireUser(new HttpRequestWrapper(HttpContext.Current.Request), conn, RolesPermitidos);
+                    SessionAccess.RequireModule(new HttpRequestWrapper(HttpContext.Current.Request), conn, "compras", SecurityPolicy.Read);
 
                     string sql = @"
                         SELECT id_proveedor, rut, razon_social, contacto, condicion_pago
@@ -86,7 +81,7 @@ namespace backend.Controllers
             {
                 using (var conn = DbConnectionFactory.CreateConnection())
                 {
-                    SessionAccess.RequireUser(new HttpRequestWrapper(HttpContext.Current.Request), conn, RolesPermitidos);
+                    SessionAccess.RequireModule(new HttpRequestWrapper(HttpContext.Current.Request), conn, "compras", SecurityPolicy.Read);
 
                     const string sql = @"
                         SELECT id_proveedor, rut, razon_social, contacto, condicion_pago
@@ -180,7 +175,7 @@ namespace backend.Controllers
             {
                 using (var conn = DbConnectionFactory.CreateConnection())
                 {
-                    SessionAccess.RequireUser(new HttpRequestWrapper(HttpContext.Current.Request), conn, RolesPermitidos);
+                    var actor = SessionAccess.RequireModule(new HttpRequestWrapper(HttpContext.Current.Request), conn, "compras", SecurityPolicy.Edit);
 
                     const string checkSql = "SELECT COUNT(*) FROM PROVEEDOR WHERE rut = @rut";
                     using (var checkCmd = new MySqlCommand(checkSql, conn))
@@ -197,7 +192,8 @@ namespace backend.Controllers
                         VALUES (@rut, @razon_social, @contacto, @condicion_pago);
                         SELECT LAST_INSERT_ID();";
 
-                    using (var cmd = new MySqlCommand(insertSql, conn))
+                    using (var transaction = conn.BeginTransaction())
+                    using (var cmd = new MySqlCommand(insertSql, conn, transaction))
                     {
                         cmd.Parameters.AddWithValue("@rut", rutFormateado);
                         cmd.Parameters.AddWithValue("@razon_social", razonSocial);
@@ -205,6 +201,8 @@ namespace backend.Controllers
                         cmd.Parameters.AddWithValue("@condicion_pago", (object)condicionPago ?? DBNull.Value);
 
                         int newId = Convert.ToInt32(cmd.ExecuteScalar());
+                        SecurityPolicy.Log(conn, transaction, actor, "compras", "Crear proveedor", "Proveedor #" + newId);
+                        transaction.Commit();
 
                         var nuevo = new ProveedorDto
                         {
@@ -286,7 +284,7 @@ namespace backend.Controllers
             {
                 using (var conn = DbConnectionFactory.CreateConnection())
                 {
-                    SessionAccess.RequireUser(new HttpRequestWrapper(HttpContext.Current.Request), conn, RolesPermitidos);
+                    var actor = SessionAccess.RequireModule(new HttpRequestWrapper(HttpContext.Current.Request), conn, "compras", SecurityPolicy.Edit);
 
                     const string existsSql = "SELECT COUNT(*) FROM PROVEEDOR WHERE id_proveedor = @id";
                     using (var existsCmd = new MySqlCommand(existsSql, conn))
@@ -314,7 +312,8 @@ namespace backend.Controllers
                         SET rut = @rut, razon_social = @razon_social, contacto = @contacto, condicion_pago = @condicion_pago
                         WHERE id_proveedor = @id";
 
-                    using (var cmd = new MySqlCommand(updateSql, conn))
+                    using (var transaction = conn.BeginTransaction())
+                    using (var cmd = new MySqlCommand(updateSql, conn, transaction))
                     {
                         cmd.Parameters.AddWithValue("@id", id);
                         cmd.Parameters.AddWithValue("@rut", rutFormateado);
@@ -323,6 +322,8 @@ namespace backend.Controllers
                         cmd.Parameters.AddWithValue("@condicion_pago", (object)condicionPago ?? DBNull.Value);
 
                         cmd.ExecuteNonQuery();
+                        SecurityPolicy.Log(conn, transaction, actor, "compras", "Editar proveedor", "Proveedor #" + id);
+                        transaction.Commit();
 
                         var actualizado = new ProveedorDto
                         {

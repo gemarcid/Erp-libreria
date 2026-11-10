@@ -46,7 +46,7 @@ namespace backend.Controllers
                     );
 
                     conexion.Open();
-                    SessionAccess.RequireUser(Request, conexion, UserAccounts.StaffRoles);
+                    SessionAccess.RequireModule(Request, conexion, "ventas", SecurityPolicy.Read);
 
                     using (var lector = comando.ExecuteReader())
                     {
@@ -120,7 +120,7 @@ namespace backend.Controllers
                     );
 
                     conexion.Open();
-                    SessionAccess.RequireUser(Request, conexion, UserAccounts.StaffRoles);
+                    SessionAccess.RequireModule(Request, conexion, "ventas", SecurityPolicy.Read);
 
                     using (var lector = comando.ExecuteReader())
                     {
@@ -235,9 +235,7 @@ namespace backend.Controllers
                 using (var conexion = CrearConexion())
                 {
                     conexion.Open();
-                    SessionAccess.RequireUser(Request, conexion, UserAccounts.StaffRoles);
-                    venta.id_usuario = SessionAccess.RequireUser(Request, conexion,
-                        "administrador", "administradora", "admin", "vendedor", "vendedora");
+                    venta.id_usuario = SessionAccess.RequireModule(Request, conexion, "ventas", SecurityPolicy.Edit);
 
                     using (var transaccion = conexion.BeginTransaction())
                     {
@@ -654,6 +652,9 @@ namespace backend.Controllers
                             // ====================================================
                             int idAsiento = VentaAccounting.Register(conexion, transaccion,
                                 idVenta, venta.id_usuario, formaPago, neto, iva, total, costo);
+                            SecurityPolicy.Log(conexion, transaccion, venta.id_usuario, "ventas", "Registrar venta", "Venta #" + idVenta);
+                            SecurityPolicy.Log(conexion, transaccion, venta.id_usuario, "contabilidad", "Generar asiento automático",
+                                "Asiento #" + idAsiento + " · Venta #" + idVenta);
                             transaccion.Commit();
 
                             return Json(new
@@ -769,7 +770,7 @@ namespace backend.Controllers
                 using (var conexion = CrearConexion())
                 {
                     conexion.Open();
-                    SessionAccess.RequireUser(Request, conexion, UserAccounts.StaffRoles);
+                    SessionAccess.RequireModule(Request, conexion, "ventas", SecurityPolicy.Read);
 
                     string sql = @"
                 SELECT

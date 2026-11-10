@@ -32,6 +32,36 @@ CREATE TABLE USUARIO (
     CONSTRAINT chk_usuario_estado CHECK (estado IN ('activo', 'inactivo'))
 ) ENGINE=InnoDB;
 
+CREATE TABLE IF NOT EXISTS SEGURIDAD_POLITICA (
+    id TINYINT PRIMARY KEY,
+    activada DATE NOT NULL
+) ENGINE=InnoDB;
+
+INSERT IGNORE INTO SEGURIDAD_POLITICA (id, activada) VALUES (1, CURRENT_DATE());
+
+CREATE TABLE IF NOT EXISTS ROL_PERMISO (
+    id_rol INT NOT NULL,
+    modulo VARCHAR(25) NOT NULL,
+    nivel TINYINT NOT NULL,
+    PRIMARY KEY (id_rol, modulo),
+    CONSTRAINT fk_permiso_rol FOREIGN KEY (id_rol) REFERENCES ROL(id_rol),
+    CONSTRAINT chk_permiso_nivel CHECK (nivel BETWEEN 0 AND 3)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS SEGURIDAD_EVENTO (
+    id_evento BIGINT AUTO_INCREMENT PRIMARY KEY,
+    fecha DATETIME(6) NOT NULL,
+    id_usuario INT,
+    usuario VARCHAR(100) NOT NULL,
+    rol VARCHAR(50),
+    modulo VARCHAR(25) NOT NULL,
+    accion VARCHAR(70) NOT NULL,
+    detalle VARCHAR(255),
+    exito BOOLEAN NOT NULL,
+    INDEX idx_evento_modulo_fecha (modulo, fecha, id_evento),
+    INDEX idx_evento_fecha (fecha, id_evento)
+) ENGINE=InnoDB;
+
 -- =====================================================================
 -- MÓDULO: CATÁLOGO E INVENTARIO
 -- =====================================================================
@@ -239,8 +269,14 @@ CREATE TABLE MOVIMIENTO_STOCK (
 CREATE TABLE CUENTA_CONTABLE (
     codigo_cuenta  VARCHAR(20) PRIMARY KEY,
     nombre         VARCHAR(100) NOT NULL,
-    tipo           VARCHAR(20) NOT NULL, -- activo, pasivo, patrimonio, ingreso, gasto
-    CONSTRAINT chk_cuenta_tipo CHECK (tipo IN ('activo','pasivo','patrimonio','ingreso','gasto'))
+    tipo           VARCHAR(20) NOT NULL,
+    CONSTRAINT chk_cuenta_tipo CHECK (tipo IN ('activo','pasivo','patrimonio','ingreso','gasto','costo'))
+) ENGINE=InnoDB;
+
+CREATE TABLE CUENTA_AUTOMATICA (
+    operacion      VARCHAR(30) PRIMARY KEY,
+    codigo_cuenta  VARCHAR(20) NOT NULL,
+    CONSTRAINT fk_automatica_cuenta FOREIGN KEY (codigo_cuenta) REFERENCES CUENTA_CONTABLE(codigo_cuenta)
 ) ENGINE=InnoDB;
 
 CREATE TABLE PERIODO_CONTABLE (
@@ -261,6 +297,8 @@ CREATE TABLE ASIENTO (
     glosa          VARCHAR(255),
     origen         VARCHAR(20) NOT NULL, -- compras, ventas, manual
     id_documento   INT, -- referencia logica al documento de origen
+    clave_solicitud CHAR(36), -- identificador de reintentos del asiento manual
+    CONSTRAINT uk_asiento_solicitud UNIQUE (id_usuario, clave_solicitud),
     CONSTRAINT fk_asiento_periodo FOREIGN KEY (id_periodo) REFERENCES PERIODO_CONTABLE(id_periodo),
     CONSTRAINT fk_asiento_usuario FOREIGN KEY (id_usuario) REFERENCES USUARIO(id_usuario),
     CONSTRAINT chk_asiento_origen CHECK (origen IN ('compras','ventas','manual'))

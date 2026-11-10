@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import ErpModuleShell from "@/components/ErpModuleShell";
+import { EventsPanel, RolesPanel } from "./SecurityPanels";
 import ErpIcon from "@/components/ErpIcon";
 import { useAuth } from "@/components/AuthProvider";
 import { canOpenModule } from "@/lib/module-access";
@@ -14,6 +15,7 @@ async function readUsers(signal) {
 }
 
 export default function Administracion() {
+  const [view, setView] = useState("usuarios");
   const { usuario, refreshSession } = useAuth();
   const [users, setUsers] = useState([]);
   const [roles, setRoles] = useState([]);
@@ -93,8 +95,18 @@ export default function Administracion() {
   }
 
   return <ErpModuleShell module="administracion" title="Administración y seguridad" liveData
-    description="Crea usuarios, asigna perfiles y administra el acceso al sistema."
-    actions={<div className="account-heading-actions"><button className="module-primary-button" disabled={loading || saving || !roles.length} onClick={() => { setEditing({ nombre: "", correo: "", idRol: roles.find((r) => r.nombre.toLowerCase() === "cliente")?.id || roles[0]?.id, estado: "activo" }); setError(""); }}><ErpIcon name="plus" />Nuevo usuario</button></div>}>
+    description="Administra usuarios y permisos. Consulta accesos y operaciones del sistema."
+    actions={view === "usuarios" && <div className="account-heading-actions"><button className="module-primary-button" disabled={loading || saving || !roles.length} onClick={() => { setEditing({ nombre: "", correo: "", idRol: roles.find((r) => r.nombre.toLowerCase() === "cliente")?.id || roles[0]?.id, estado: "activo" }); setError(""); }}><ErpIcon name="plus" />Nuevo usuario</button></div>}>
+    <nav className="module-tabs" aria-label="Vistas de Administración y Seguridad">
+      {[["usuarios", "Usuarios"], ["perfiles", "Roles y permisos"], ["accesos", "Inicios de sesión"],
+        ["operaciones", "Bitácora"], ["actividad", "Actividad por módulo"]].map(([id, label]) => (
+        <button type="button" key={id} aria-current={view === id ? "page" : undefined}
+          className={view === id ? "is-selected" : undefined} onClick={() => setView(id)}>{label}</button>
+      ))}
+    </nav>
+    {view === "perfiles" && <RolesPanel />}
+    {["accesos", "operaciones", "actividad"].includes(view) && <EventsPanel key={view} view={view} />}
+    {view === "usuarios" && <>
     {error && <p className="ventas-message ventas-message-error" role="alert">{error}</p>}
     {message && <p className="account-message" role="status">{message}</p>}
     <section className="erp-metrics" aria-label="Resumen de usuarios">
@@ -131,5 +143,6 @@ export default function Administracion() {
       </table>{!visible.length && !error && <p className="erp-empty">No hay usuarios que coincidan con los filtros.</p>}</div>}
       <p className="module-caption">La desactivación elimina el acceso y conserva el historial de compras y ventas del usuario.</p>
     </section>
+    </>}
   </ErpModuleShell>;
 }

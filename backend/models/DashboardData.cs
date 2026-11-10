@@ -7,7 +7,8 @@ namespace backend.Models
 {
     public static class DashboardData
     {
-        public static object Load(MySqlConnection connection, DateTime today)
+        public static object Load(MySqlConnection connection, DateTime today, bool sales = true, bool purchases = true,
+            bool inventory = true, bool accounting = true)
         {
             today = today.Date;
             var days = new List<object>();
@@ -20,6 +21,7 @@ namespace backend.Models
             decimal payable;
             using (var transaction = connection.BeginTransaction(IsolationLevel.RepeatableRead))
             {
+                if (sales)
                 using (var command = new MySqlCommand(@"SELECT DATE(fecha) AS dia, SUM(total) AS total FROM VENTA
                     WHERE estado = 'pagado' AND fecha >= @start AND fecha < @end
                     GROUP BY DATE(fecha)", connection, transaction))
@@ -37,7 +39,7 @@ namespace backend.Models
                     decimal amount;
                     salesByDate.TryGetValue(date, out amount);
                     if (i < -6) previousWeekTotal += amount;
-                    else { weekTotal += amount; days.Add(new { date = date.ToString("yyyy-MM-dd"), total = amount }); }
+                    else if (sales) { weekTotal += amount; days.Add(new { date = date.ToString("yyyy-MM-dd"), total = amount }); }
                 }
                 using (var command = new MySqlCommand(@"SELECT
                     (SELECT COUNT(*) FROM LIBRO WHERE activo = TRUE AND stock_actual <= stock_minimo) AS stock,
@@ -51,17 +53,19 @@ namespace backend.Models
                 using (var reader = command.ExecuteReader())
                 {
                     reader.Read();
-                    criticalStock = Convert.ToInt32(reader["stock"]);
-                    payable = Convert.ToDecimal(reader["payable"]);
-                    pendingOrders = Convert.ToInt32(reader["orders"]);
-                    pendingReceipts = Convert.ToInt32(reader["receipts"]);
+                    criticalStock = inventory ? Convert.ToInt32(reader["stock"]) : 0;
+                    payable = purchases ? Convert.ToDecimal(reader["payable"]) : 0;
+                    pendingOrders = purchases ? Convert.ToInt32(reader["orders"]) : 0;
+                    pendingReceipts = purchases ? Convert.ToInt32(reader["receipts"]) : 0;
                 }
+                if (purchases)
                 using (var command = new MySqlCommand(@"SELECT oc.id_oc, p.razon_social, oc.total FROM ORDEN_COMPRA oc
                     INNER JOIN PROVEEDOR p ON p.id_proveedor = oc.id_proveedor
                     WHERE oc.estado = 'pendiente' ORDER BY oc.fecha DESC, oc.id_oc DESC LIMIT 5", connection, transaction))
                 using (var reader = command.ExecuteReader())
                     while (reader.Read()) orders.Add(new { code = "OC-" + Convert.ToInt32(reader["id_oc"]).ToString("D5"),
                         supplier = reader["razon_social"].ToString(), total = Convert.ToDecimal(reader["total"]) });
+                if (sales)
                 using (var command = new MySqlCommand(@"SELECT l.isbn, l.titulo, l.autor, SUM(d.cantidad) AS units
                     FROM DETALLE_VENTA d INNER JOIN VENTA v ON v.id_venta = d.id_venta
                     INNER JOIN LIBRO l ON l.isbn = d.isbn
@@ -89,9 +93,15 @@ namespace backend.Models
                         INNER JOIN PROVEEDOR p ON p.id_proveedor = oc.id_proveedor
                     UNION ALL
                     SELECT CONCAT('asiento-',id_asiento),'accounting','Asiento contable',COALESCE(glosa,''),fecha,1 FROM ASIENTO
-                    ) events WHERE fecha < @end ORDER BY fecha DESC,id DESC LIMIT 6", connection, transaction))
+                    ) events WHERE fecha < @end AND ((icon='sales' AND @sales) OR (icon='inventory' AND @inventory)
+                        OR (icon='purchases' AND @purchases) OR (icon='accounting' AND @accounting))
+                    ORDER BY fecha DESC,id DESC LIMIT 6", connection, transaction))
                 {
                     command.Parameters.AddWithValue("@end", today.AddDays(1));
+                    command.Parameters.AddWithValue("@sales", sales);
+                    command.Parameters.AddWithValue("@purchases", purchases);
+                    command.Parameters.AddWithValue("@inventory", inventory);
+                    command.Parameters.AddWithValue("@accounting", accounting);
                     using (var reader = command.ExecuteReader())
                         while (reader.Read()) activity.Add(new { id = reader["id"].ToString(), icon = reader["icon"].ToString(),
                             title = reader["title"].ToString(), detail = reader["detail"].ToString(),

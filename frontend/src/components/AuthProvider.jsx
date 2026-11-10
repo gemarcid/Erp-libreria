@@ -59,17 +59,19 @@ export default function AuthProvider({ children }) {
     return () => window.removeEventListener("focus", refreshSession);
   }, [refreshSession]);
 
-  async function login(email, password) {
+  async function login(email, password, newPassword) {
     ++revision.current;
     const response = await fetch("/api/auth", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email, password, newPassword }),
     });
     const result = await response.json();
     if (!response.ok) {
-      if (response.status === 401) setUsuario(null);
-      throw new Error(result.error || "No se pudo iniciar sesión.");
+      if (response.status === 401 || response.status === 428) setUsuario(null);
+      const failure = new Error(result.error || "No se pudo iniciar sesión.");
+      failure.requiereCambio = result.requiereCambio === true;
+      throw failure;
     }
     ++revision.current;
     clearLegacyStorage();

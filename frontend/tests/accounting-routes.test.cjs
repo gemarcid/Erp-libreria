@@ -47,6 +47,22 @@ test("Contabilidad conserva la denegación de permisos y muestra caídas del ser
   const unavailable = await loadRoute("contabilidad/route.js", async () => { throw new Error("Offline"); });
   assert.equal((await unavailable.GET(request("session-test"))).status, 503);
 });
+test("Las escrituras contables requieren sesión y origen local, y conservan el rechazo del backend", async () => {
+  const data = { date: "2026-11-10", description: "Ajuste", lines: [] };
+  const route = await loadRoute("contabilidad/route.js", async (url, options) => {
+    assert.equal(url, "/Contabilidad/Manual");
+    assert.equal(options.headers.Authorization, "Bearer session-test");
+    assert.deepEqual(JSON.parse(options.body), data);
+    return { response: { status: 409 }, result: { error: "Período cerrado" } };
+  });
+  const write = { ...request("session-test"), json: async () => ({ operation: "manual", data }) };
+  assert.equal((await route.POST(request())).status, 401);
+  assert.equal((await route.POST(request("session-test", "https://otro.example.test"))).status, 403);
+  assert.equal((await route.POST({ ...write, json: async () => ({ operation: "constructor", data }) })).status, 400);
+  const response = await route.POST(write);
+  assert.equal(response.status, 409);
+  assert.deepEqual(await response.json(), { error: "Período cerrado" });
+});
 test("Registrar ventas exige sesión y el mismo origen", async () => {
   const route = await loadRoute("ventas/registrar/route.js", () => assert.fail("Backend no debe llamarse"));
   assert.equal((await route.POST(request())).status, 401);

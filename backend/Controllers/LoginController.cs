@@ -33,6 +33,8 @@ namespace backend.Controllers
                         // Public registration never accepts a role or status from the caller.
                         var userId = UserAccounts.Create(connection, transaction, nombre, email, password, roleId, "activo");
                         UserAccounts.SaveCustomer(connection, transaction, userId, nombre, rut, "persona");
+                        SecurityPolicy.Log(connection, transaction, userId, "administracion", "Registrar cuenta cliente",
+                            "Usuario #" + userId);
                         transaction.Commit();
                     }
                 }
@@ -47,64 +49,73 @@ namespace backend.Controllers
         [HttpPost]
         public JsonResult Ingresar(string email, string password)
         {
-            // Permitir conexión con el frontend (CORS)
-            Response.AppendHeader("Access-Control-Allow-Origin", "*");
+            return Authenticate(email, password, null);
+        }
 
-            Response.Cache.SetCacheability(System.Web.HttpCacheability.NoCache);
+        [HttpPost]
+        public JsonResult CambiarPassword(string email, string password, string newPassword)
+        {
+            if (string.IsNullOrEmpty(newPassword)) return Error(400, "Ingresa la nueva contraseña.");
+            return Authenticate(email, password, newPassword);
+        }
+
+        private JsonResult Authenticate(string email, string password, string newPassword)
+        {
             Response.Cache.SetNoStore();
-
             if (string.IsNullOrWhiteSpace(email) || email.Trim().Length > 100 ||
-                string.IsNullOrEmpty(password))
-            {
+                string.IsNullOrEmpty(password) || System.Text.Encoding.UTF8.GetByteCount(password) > 72)
                 return Error(400, "Ingresa el correo y la contraseña.");
-            }
-
             try
             {
-                using (var conexion = CrearConexion())
-                using (var comando = new MySqlCommand(
-                    @"SELECT u.id_usuario, u.id_rol, u.nombre, u.correo,
-                             u.password_hash, r.nombre AS rol
-                      FROM USUARIO u
-                      INNER JOIN ROL r ON r.id_rol = u.id_rol
-                      WHERE u.correo = @correo AND u.estado = 'activo'
-                      LIMIT 1", conexion))
+                using (var connection = CrearConexion())
                 {
-                    comando.Parameters.AddWithValue("@correo", email.Trim());
-                    conexion.Open();
-
-                    using (var lector = comando.ExecuteReader())
+                    connection.Open();
+                    var user = SessionAccess.FindUser(connection, email.Trim());
+                    if (user == null || !user.Active || !BCrypt.Net.BCrypt.Verify(password, user.PasswordHash))
                     {
-                        if (!lector.Read())
-                        {
-                            return Error(401, "USUARIO NO ENCONTRADO");
-                        }
-
-                        var hash = lector["password_hash"].ToString().Trim();
-
-                        var passwordOk = BCrypt.Net.BCrypt.Verify(password, hash);
-
-                        if (!passwordOk)
-                        {
-                            return Error(401, "BCrypt FALLÓ");
-                        }
-
-                        var usuario = LeerUsuario(lector);
-                        var ahora = DateTime.Now;
-                        var ticket = new FormsAuthenticationTicket(
-                            1, usuario.id_usuario, ahora,
-                            ahora.AddHours(DuracionSesionHoras), false, "");
-
-                        return Json(new
-                        {
-                            success = true,
-                            usuario,
-                            sessionToken = FormsAuthentication.Encrypt(ticket),
-                            expiresIn = DuracionSesionHoras * 60 * 60
-                        });
+                        SecurityPolicy.Log(connection, null, user?.Id, "acceso", "Inicio de sesión",
+                            "Credenciales no válidas o cuenta inactiva", false, email.Trim());
+                        return Error(401, "Correo o contraseña incorrectos.");
                     }
+
+                    if (newPassword != null)
+                    {
+                        UserAccounts.Validate(user.Name, user.Email, newPassword, true);
+                        if (password == newPassword) return Error(400, "La nueva contraseña debe ser distinta de la anterior.");
+                        var hash = BCrypt.Net.BCrypt.HashPassword(newPassword, 11);
+                        using (var transaction = connection.BeginTransaction())
+                        {
+                            using (var command = new MySqlCommand(@"UPDATE USUARIO
+                                SET password_hash=@hash, fecha_ultimo_cambio_pass=CURRENT_DATE()
+                                WHERE id_usuario=@id AND estado='activo' AND BINARY password_hash=BINARY @previous", connection, transaction))
+                            {
+                                command.Parameters.AddWithValue("@hash", hash);
+                                command.Parameters.AddWithValue("@id", user.Id);
+                                command.Parameters.AddWithValue("@previous", user.PasswordHash);
+                                if (command.ExecuteNonQuery() != 1) return Error(409, "La cuenta cambió. Vuelve a intentar.");
+                            }
+                            SecurityPolicy.Log(connection, transaction, user.Id, "administracion", "Renovar contraseña",
+                                "Contraseña renovada por el usuario");
+                            transaction.Commit();
+                        }
+                        user.PasswordHash = hash;
+                    }
+                    else if (SecurityPolicy.PasswordExpired(connection, user.PasswordChanged))
+                    {
+                        SecurityPolicy.Log(connection, null, user.Id, "acceso", "Inicio de sesión",
+                            "Renovación de contraseña requerida", false);
+                        return Error(428, "Tu contraseña venció. Crea una nueva para ingresar.");
+                    }
+
+                    SecurityPolicy.Log(connection, null, user.Id, "acceso", "Inicio de sesión", "Acceso concedido");
+                    var now = DateTime.Now;
+                    var ticket = new FormsAuthenticationTicket(2, user.Id.ToString(CultureInfo.InvariantCulture),
+                        now, now.AddHours(DuracionSesionHoras), false, SecurityPolicy.PasswordStamp(user.PasswordHash));
+                    return Json(new { success = true, usuario = user.Public(connection),
+                        sessionToken = FormsAuthentication.Encrypt(ticket), expiresIn = DuracionSesionHoras * 3600 });
                 }
             }
+            catch (HttpException ex) { return Error(ex.GetHttpCode(), ex.Message); }
             catch (Exception ex)
             {
                 Trace.TraceError("No se pudo iniciar sesión: {0}", ex.GetType().Name);
@@ -115,61 +126,17 @@ namespace backend.Controllers
         [HttpGet]
         public JsonResult Sesion()
         {
-            // Permitir conexión con el frontend (CORS)
-            Response.AppendHeader("Access-Control-Allow-Origin", "*");
-
-            Response.Cache.SetCacheability(System.Web.HttpCacheability.NoCache);
             Response.Cache.SetNoStore();
-
-            string cabecera = Request.Headers["Authorization"];
-            if (string.IsNullOrEmpty(cabecera) ||
-                !cabecera.StartsWith("Bearer ", StringComparison.Ordinal))
-            {
-                return Error(401, "Debes iniciar sesión.");
-            }
-
-            FormsAuthenticationTicket ticket;
-            int idUsuario;
-
             try
             {
-                ticket = FormsAuthentication.Decrypt(cabecera.Substring(7));
-                if (ticket == null || ticket.Expired ||
-                    !int.TryParse(ticket.Name, out idUsuario) || idUsuario <= 0)
+                using (var connection = CrearConexion())
                 {
-                    return Error(401, "Tu sesión ha vencido. Inicia sesión nuevamente.");
+                    connection.Open();
+                    var user = SessionAccess.ReadSession(Request, connection);
+                    return Json(new { success = true, usuario = user.Public(connection) }, JsonRequestBehavior.AllowGet);
                 }
             }
-            catch (Exception)
-            {
-                return Error(401, "La sesión no es válida.");
-            }
-
-            try
-            {
-                using (var conexion = CrearConexion())
-                using (var comando = new MySqlCommand(
-                    @"SELECT u.id_usuario, u.id_rol, u.nombre, u.correo, r.nombre AS rol
-                      FROM USUARIO u
-                      INNER JOIN ROL r ON r.id_rol = u.id_rol
-                      WHERE u.id_usuario = @id AND u.estado = 'activo'
-                      LIMIT 1", conexion))
-                {
-                    comando.Parameters.AddWithValue("@id", idUsuario);
-                    conexion.Open();
-
-                    using (var lector = comando.ExecuteReader())
-                    {
-                        if (!lector.Read())
-                        {
-                            return Error(401, "Tu cuenta no tiene acceso al sistema.");
-                        }
-
-                        return Json(new { success = true, usuario = LeerUsuario(lector) },
-                            JsonRequestBehavior.AllowGet);
-                    }
-                }
-            }
+            catch (HttpException ex) { return Error(ex.GetHttpCode(), ex.Message); }
             catch (Exception ex)
             {
                 Trace.TraceError("No se pudo comprobar la sesión: {0}", ex.GetType().Name);
@@ -183,18 +150,6 @@ namespace backend.Controllers
                 ConfigurationManager.ConnectionStrings["ConexionMySQL"].ConnectionString);
         }
 
-        private static UsuarioSesion LeerUsuario(MySqlDataReader lector)
-        {
-            return new UsuarioSesion
-            {
-                id_usuario = Convert.ToString(lector["id_usuario"], CultureInfo.InvariantCulture),
-                id_rol = Convert.ToString(lector["id_rol"], CultureInfo.InvariantCulture),
-                nombre = lector["nombre"].ToString(),
-                correo = lector["correo"].ToString(),
-                rol = lector["rol"].ToString()
-            };
-        }
-
         private JsonResult Error(int estado, string mensaje)
         {
             Response.AppendHeader("Access-Control-Allow-Origin", "*");
@@ -203,13 +158,5 @@ namespace backend.Controllers
             return Json(new { success = false, error = mensaje }, JsonRequestBehavior.AllowGet);
         }
 
-        private sealed class UsuarioSesion
-        {
-            public string id_usuario { get; set; }
-            public string id_rol { get; set; }
-            public string nombre { get; set; }
-            public string correo { get; set; }
-            public string rol { get; set; }
-        }
     }
 }

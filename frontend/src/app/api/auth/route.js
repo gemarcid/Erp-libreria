@@ -35,6 +35,7 @@ function publicUser(user) {
     nombre: user.nombre,
     correo: user.correo,
     rol: user.rol,
+    ...(user.permisos && { permisos: user.permisos }),
   };
 }
 
@@ -61,15 +62,23 @@ export async function POST(request) {
   }
 
   try {
-    const { response, result } = await requestBackend("Ingresar", {
+    const changing = typeof credentials.newPassword === "string";
+    const { response, result } = await requestBackend(changing ? "CambiarPassword" : "Ingresar", {
       method: "POST",
       body: new URLSearchParams({
         email: credentials.email.trim(),
         password: credentials.password,
+        ...(changing && { newPassword: credentials.newPassword }),
       }),
     });
 
     if (!response.ok || !result.success) {
+      if (response.status === 428) {
+        return clearSession(json({ error: result.error, requiereCambio: true }, 428));
+      }
+      if (changing && [400, 409].includes(response.status)) {
+        return json({ error: result.error || "No se pudo renovar la contraseña." }, response.status);
+      }
       const invalid = response.status === 400 || response.status === 401;
       return clearSession(
         json(

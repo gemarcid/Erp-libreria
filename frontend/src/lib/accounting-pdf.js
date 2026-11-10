@@ -6,6 +6,51 @@ const amount = (value) => new Intl.NumberFormat("es-CL", { minimumFractionDigits
 const primary = [155, 68, 68];
 const muted = [107, 101, 101];
 
+export function createAccountingTablePdf({ title, periodLabel, detail, columns, rows }) {
+  const doc = new jsPDF({ orientation: columns.length > 5 ? "landscape" : "portrait", format: "a4" });
+  const width = doc.internal.pageSize.getWidth();
+  const height = doc.internal.pageSize.getHeight();
+  const margin = 14;
+  const description = doc.splitTextToSize(detail, width - margin * 2);
+  doc.setProperties({ title, subject: periodLabel, author: "Librería ERP" });
+  autoTable(doc, {
+    margin: { top: 46 + description.length * 4, bottom: 16, left: margin, right: margin },
+    head: [columns.map(({ label }) => label)],
+    body: rows.map(({ cells }) => cells.map((value) => typeof value === "number" ? amount(value) : value)),
+    styles: { font: "helvetica", fontSize: 8, cellPadding: 2.5, overflow: "linebreak" },
+    headStyles: { fillColor: primary, textColor: 255 },
+    alternateRowStyles: { fillColor: [250, 247, 247] },
+    columnStyles: Object.fromEntries(columns.map((column, index) => [index, { halign: column.numeric ? "right" : "left" }])),
+    rowPageBreak: "avoid",
+    didParseCell({ section, row, cell }) {
+      if (section === "body" && rows[row.index]?.strong) cell.styles.fontStyle = "bold";
+    },
+    willDrawPage() {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(9);
+      doc.setTextColor(...primary);
+      doc.text("LIBRERÍA ERP / CONTABILIDAD", margin, 14);
+      doc.setFontSize(19);
+      doc.setTextColor(44, 44, 44);
+      doc.text(title, margin, 27);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      doc.setTextColor(...muted);
+      doc.text(periodLabel + " | Pesos chilenos (CLP)", margin, 35);
+      doc.text(description, margin, 41);
+    },
+  });
+  const pages = doc.getNumberOfPages();
+  for (let page = 1; page <= pages; page++) {
+    doc.setPage(page);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(...muted);
+    doc.text("Página " + page + " de " + pages, width - margin, height - 8, { align: "right" });
+  }
+  return doc;
+}
+
 export function createAccountingPdf({ entries, accounts, period, periodLabel, source = "Todos", search = "", generatedAt = new Date() }) {
   if (!entries.length) throw new Error("No hay asientos para exportar.");
   const balance = buildBalance(entries, accounts);

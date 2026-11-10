@@ -12,16 +12,6 @@ namespace backend.Controllers
     [RoutePrefix("api/recepciones")]
     public class RecepcionesController : ApiController
     {
-        private static readonly string[] RolesLectura = new[]
-        {
-            "administrador", "administradora", "admin", "comprador", "compradora", "contador", "contadora"
-        };
-
-        private static readonly string[] RolesRegistrar = new[]
-        {
-            "administrador", "administradora", "admin", "comprador", "compradora"
-        };
-
         [HttpGet]
         [Route("pendientes")]
         public IHttpActionResult GetOrdenesPendientes()
@@ -33,7 +23,7 @@ namespace backend.Controllers
             {
                 using (var conn = DbConnectionFactory.CreateConnection())
                 {
-                    SessionAccess.RequireUser(new HttpRequestWrapper(HttpContext.Current.Request), conn, RolesLectura);
+                    SessionAccess.RequireModule(new HttpRequestWrapper(HttpContext.Current.Request), conn, "compras", SecurityPolicy.Read);
 
                     const string sql = @"
                         SELECT oc.id_oc, oc.id_proveedor, p.razon_social,
@@ -117,7 +107,7 @@ namespace backend.Controllers
             {
                 using (var conn = DbConnectionFactory.CreateConnection())
                 {
-                    SessionAccess.RequireUser(new HttpRequestWrapper(HttpContext.Current.Request), conn, RolesLectura);
+                    SessionAccess.RequireModule(new HttpRequestWrapper(HttpContext.Current.Request), conn, "compras", SecurityPolicy.Read);
 
                     const string sql = @"
                         SELECT oc.id_oc, oc.id_proveedor, p.razon_social, oc.estado,
@@ -279,7 +269,7 @@ namespace backend.Controllers
             {
                 using (var conn = DbConnectionFactory.CreateConnection())
                 {
-                    int userId = SessionAccess.RequireUser(new HttpRequestWrapper(HttpContext.Current.Request), conn, RolesRegistrar);
+                    int userId = SessionAccess.RequireModule(new HttpRequestWrapper(HttpContext.Current.Request), conn, "compras", SecurityPolicy.Edit);
                     if (userId <= 0 && dto.IdUsuario.HasValue && dto.IdUsuario.Value > 0)
                     {
                         userId = dto.IdUsuario.Value;
@@ -490,6 +480,7 @@ namespace backend.Controllers
                                 }
                             }
 
+                            SecurityPolicy.Log(conn, trans, userId, "compras", "Registrar recepción", "Recepción #" + nuevaRecepcionId);
                             trans.Commit();
 
                             return Content(HttpStatusCode.Created, new
@@ -539,7 +530,7 @@ namespace backend.Controllers
             {
                 using (var conn = DbConnectionFactory.CreateConnection())
                 {
-                    SessionAccess.RequireUser(new HttpRequestWrapper(HttpContext.Current.Request), conn, RolesLectura);
+                    SessionAccess.RequireModule(new HttpRequestWrapper(HttpContext.Current.Request), conn, "compras", SecurityPolicy.Read);
 
                     string sql = @"
                         SELECT r.id_recepcion, r.id_oc, p.razon_social AS proveedor_nombre,

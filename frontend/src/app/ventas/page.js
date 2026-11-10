@@ -5,6 +5,7 @@ import ErpModuleShell from "@/components/ErpModuleShell";
 import ErpIcon from "@/components/ErpIcon";
 import { useAuth } from "@/components/AuthProvider";
 import VentasNav from "@/components/VentasNav";
+import { moduleAccessLevel } from "@/lib/module-access";
 
 function formatMoney(value) {
   return new Intl.NumberFormat("es-CL", {
@@ -16,6 +17,7 @@ function formatMoney(value) {
 
 export default function VentasPage() {
   const { usuario } = useAuth();
+  const puedeRegistrar = moduleAccessLevel(usuario, "ventas") >= 2;
 
   const [clienteBusqueda, setClienteBusqueda] = useState("");
   const [clientes, setClientes] = useState([]);
@@ -585,6 +587,7 @@ export default function VentasPage() {
                 <option value="efectivo">Efectivo</option>
                 <option value="tarjeta">Tarjeta</option>
                 <option value="transferencia">Transferencia</option>
+                <option value="transferencia">Transferencia</option>
               </select>
             </label>
 
@@ -629,6 +632,7 @@ export default function VentasPage() {
               type="button"
               className="erp-primary-button"
               disabled={
+                !puedeRegistrar ||
                 registrando ||
                 !clienteSeleccionado ||
                 detalles.length === 0

@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import ErpIcon from "@/components/ErpIcon";
+import ErpNavigation, { ErpSidebar } from "@/components/ErpNavigation";
 import { useAuth } from "@/components/AuthProvider";
 import "./erp.css";
 import { canOpenModule, isCliente } from "@/lib/module-access";
@@ -12,7 +13,6 @@ import { money, comparison, localDateLabel, activityDate, chartMaximum } from "@
 export default function Home() {
   const [search, setSearch] = useState("");
   const [notificationsOpen, setNotificationsOpen] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
 
   const router = useRouter();
   const { usuario, iniciales, loading, error, logout, refreshSession } =
@@ -86,6 +86,9 @@ export default function Home() {
   const orders = data?.orders || [];
   const activity = data?.activity || [];
   const chartMax = chartMaximum(days);
+  const sales = canOpenModule(usuario, "ventas");
+  const purchases = canOpenModule(usuario, "compras");
+  const inventory = canOpenModule(usuario, "inventario");
   const metrics = [
     { title: "Ventas del día", value: data ? money(data.salesToday) : "—",
       detail: data ? `${comparison(data.salesToday, data.salesYesterday)} respecto a ayer` : "",
@@ -96,7 +99,7 @@ export default function Home() {
       detail: "Facturas de proveedores pendientes", icon: "accounting", tone: "warning" },
     { title: "Recepciones pendientes", value: data ? String(data.pendingReceipts) : "—",
       detail: "Órdenes aprobadas sin recepción", icon: "purchases", tone: "neutral" },
-  ];
+  ].filter((_, index) => [sales, inventory, purchases, purchases][index]);
   const visibleBooks = books.filter((book) =>
     `${book.title} ${book.author}`
       .toLocaleLowerCase("es")
@@ -128,83 +131,10 @@ export default function Home() {
       <a className="erp-skip" href="#main-content">
         Saltar al contenido
       </a>
-      <aside className="erp-sidebar">
-        <Link href="/" className="erp-brand" aria-label="Librería ERP, inicio">
-          <span className="erp-brand-icon">
-            <ErpIcon name="book" />
-          </span>
-          <span>
-            Librería <b>ERP</b>
-            <small>SISTEMA DE GESTIÓN</small>
-          </span>
-        </Link>
-        <nav aria-label="Navegación principal">
-          <p className="erp-nav-label">PRINCIPAL</p>
-          <Link href="/" className="erp-nav-item is-active" aria-current="page">
-            <ErpIcon name="home" />
-            Inicio
-          </Link>
-          <p className="erp-nav-label">GESTIÓN</p>
-          {canOpenModule(usuario, "compras") && (
-            <Link href="/compras" className="erp-nav-item">
-              <ErpIcon name="purchases" />
-              Compras
-              <span className="erp-nav-arrow">›</span>
-            </Link>
-          )}
-          {canOpenModule(usuario, "ventas") && (
-            <Link href="/ventas" className="erp-nav-item">
-              <ErpIcon name="sales" />
-              Ventas<span className="erp-nav-arrow">›</span>
-            </Link>
-          )}
-          {canOpenModule(usuario, "inventario") && (
-            <Link href="/inventario" className="erp-nav-item">
-              <ErpIcon name="inventory" />
-              Inventario<span className="erp-nav-arrow">›</span>
-            </Link>
-          )}
-          {canOpenModule(usuario, "contabilidad") && (
-            <Link href="/contabilidad" className="erp-nav-item">
-              <ErpIcon name="accounting" />
-              Contabilidad<span className="erp-nav-arrow">›</span>
-            </Link>
-          )}
-          <p className="erp-nav-label">SISTEMA</p>
-          {canOpenModule(usuario, "administracion") && (
-            <Link href="/administracion" className="erp-nav-item">
-              <ErpIcon name="settings" />
-              Administración y seguridad
-              <span className="erp-nav-arrow" aria-hidden="true">›</span>
-            </Link>
-          )}
-        </nav>
-        <div className="erp-sidebar-note">
-          <span className="erp-dot" />
-          Todo en un mismo lugar<p>Una nueva página para tu librería.</p>
-        </div>
-
-        {/* SECCIÓN USUARIO SIDEBAR (Dinámica) */}
-        <div className="erp-sidebar-user">
-          <Link href="/mi-perfil" className="erp-sidebar-profile">
-            <span className="erp-avatar">{iniciales}</span>
-            <span className="erp-sidebar-profile-info"><strong>{nombreUsuario}</strong><small>{usuario.rol}</small><span className="erp-sidebar-profile-label">Mi perfil <ErpIcon name="arrow" /></span></span>
-          </Link>
-          <button
-            type="button"
-            className="erp-logout-button"
-            onClick={handleLogout}
-            disabled={closingSession}
-            aria-label="Cerrar sesión"
-            title="Cerrar sesión"
-          >
-            <ErpIcon name="logout" />
-          </button>
-        </div>
-      </aside>
-
+      <ErpSidebar usuario={usuario} current="home" closing={closingSession} onLogout={handleLogout} />
       <div className="erp-workspace">
         <header className="erp-topbar">
+          <ErpNavigation usuario={usuario} current="home" closing={closingSession} onLogout={handleLogout} />
           <div className="erp-branch">
             <span className="erp-muted">Sucursal</span>
             <strong>Casa Matriz</strong>
@@ -253,70 +183,8 @@ export default function Home() {
               </span>
             </button>
 
-            <button
-              className="erp-icon-button erp-mobile-menu"
-              aria-label={menuOpen ? "Cerrar menú" : "Abrir menú"}
-              aria-expanded={menuOpen}
-              aria-controls="erp-mobile-nav"
-              onClick={() => setMenuOpen(!menuOpen)}
-            >
-              <ErpIcon name="menu" />
-            </button>
           </div>
         </header>
-
-        {menuOpen && (
-          <nav
-            id="erp-mobile-nav"
-            className="erp-mobile-nav"
-            aria-label="Navegación móvil"
-          >
-            <Link href="/">Inicio</Link>
-            {canOpenModule(usuario, "ventas") && (
-              <Link href="/ventas" className="erp-nav-item">
-                <ErpIcon name="sales" />
-                Ventas
-                <span className="erp-nav-arrow" aria-hidden="true">›</span>
-              </Link>
-            )}
-            {canOpenModule(usuario, "inventario") && (
-              <Link href="/inventario" className="erp-nav-item">
-                <ErpIcon name="inventory" />
-                Inventario
-                <span className="erp-nav-arrow" aria-hidden="true">›</span>
-              </Link>
-            )}
-            {canOpenModule(usuario, "compras") && (
-              <Link href="/compras" className="erp-nav-item">
-                <ErpIcon name="purchases" />
-                Compras
-                <span className="erp-nav-arrow" aria-hidden="true">›</span>
-              </Link>
-            )}
-            {canOpenModule(usuario, "contabilidad") && (
-              <Link href="/contabilidad" className="erp-nav-item">
-                <ErpIcon name="accounting" />
-                Contabilidad
-                <span className="erp-nav-arrow" aria-hidden="true">›</span>
-              </Link>
-            )}
-            {canOpenModule(usuario, "administracion") && (
-              <Link href="/administracion" className="erp-nav-item">
-                <ErpIcon name="settings" />
-                Administración y seguridad
-                <span className="erp-nav-arrow" aria-hidden="true">›</span>
-              </Link>
-            )}
-            <button
-              type="button"
-              className="erp-logout-button"
-              onClick={handleLogout}
-              disabled={closingSession}
-            >
-              Cerrar sesión
-            </button>
-          </nav>
-        )}
 
         <main id="main-content" className="erp-main">
           {logoutError && (
@@ -368,7 +236,7 @@ export default function Home() {
           </section>
 
           <div className="erp-overview-grid">
-            <section className="erp-card erp-sales-panel">
+            {sales && <section className="erp-card erp-sales-panel">
               <div className="erp-section-heading">
                 <div>
                   <p className="erp-eyebrow">EL PULSO DE TU NEGOCIO</p>
@@ -408,9 +276,9 @@ export default function Home() {
                 Ventas totales en pesos chilenos
               </div>
               {data && data.weekTotal === 0 && <p className="erp-empty">No hay ventas pagadas en los últimos 7 días.</p>}
-            </section>
+            </section>}
 
-            <section className="erp-card erp-orders-panel">
+            {purchases && <section className="erp-card erp-orders-panel">
               <div className="erp-section-heading">
                 <div>
                   <p className="erp-eyebrow">POR REVISAR</p>
@@ -435,13 +303,13 @@ export default function Home() {
               {data && data.pendingOrders > orders.length && <p className="erp-muted">Mostrando las {orders.length} más recientes.</p>}
               <p className="erp-panel-footnote">
                 <ErpIcon name="info" />
-                La gestión de compras estará disponible próximamente.
+                <Link href="/compras">Abrir órdenes de compra</Link>
               </p>
-            </section>
+            </section>}
           </div>
 
           <div className="erp-details-grid">
-            <section className="erp-card erp-books-panel">
+            {sales && <section className="erp-card erp-books-panel">
               <div className="erp-section-heading">
                 <div>
                   <p className="erp-eyebrow">HISTORIAS QUE SE MUEVEN</p>
@@ -483,7 +351,7 @@ export default function Home() {
                   {books.length === 0 ? "No hay libros vendidos este mes." : "No hay libros que coincidan con tu búsqueda."}
                 </p>
               )}
-            </section>
+            </section>}
 
             <section className="erp-card erp-activity-panel">
               <div className="erp-section-heading">
