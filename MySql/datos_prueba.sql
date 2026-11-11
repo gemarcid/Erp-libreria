@@ -116,14 +116,26 @@ VALUES
 -- ================================================================
 
 INSERT INTO CLIENTE
-(id_cliente, rut, nombre, tipo_cliente, puntos_fidelidad)
+(id_cliente, rut, nombre, correo, telefono, direccion, tipo_cliente, puntos_fidelidad, limite_credito, credito_utilizado)
 VALUES
-(1, '12.345.678-5', 'Juan Perez', 'persona', 125),
-(2, '15.234.567-8', 'Maria Gonzalez', 'persona', 80),
-(3, '76.555.555-5', 'Colegio Adventista de Chillan', 'colegio', 420),
-(4, '76.666.666-6', 'Empresa Educativa del Sur SpA', 'empresa', 260),
-(5, '18.765.432-1', 'Sofia Ramirez', 'persona', 45),
-(6, '14.111.222-3', 'Felipe Contreras', 'persona', 15);
+(1, '12.345.678-5', 'Juan Perez', 'jperez@gmail.com', '+56 9 8765 4321', 'Av. Libertad 123, Chillan', 'persona', 125, 300000, 0),
+(2, '15.234.567-8', 'Maria Gonzalez', 'mgonzalez@yahoo.es', '+56 9 7654 3210', 'Calle 18 de Septiembre 456, Chillan', 'persona', 80, 250000, 0),
+(3, '76.555.555-5', 'Colegio Adventista de Chillan', 'adquisiciones@colegioadventista.cl', '+56 42 222 3344', 'Av. O''Higgins 789, Chillan', 'colegio', 420, 2000000, 624155),
+(4, '76.666.666-6', 'Empresa Educativa del Sur SpA', 'compras@educativasur.cl', '+56 42 233 4455', 'Panamericana Norte Km 5, Chillan', 'empresa', 260, 1500000, 202252),
+(5, '18.765.432-1', 'Sofia Ramirez', 'sramirez@outlook.com', '+56 9 6543 2109', 'Pasaje Los Boldos 45, Chillan Viejo', 'persona', 45, 200000, 0),
+(6, '14.111.222-3', 'Felipe Contreras', 'fcontreras@gmail.com', '+56 9 5432 1098', 'Carrera 780, San Carlos', 'persona', 15, 150000, 0);
+
+-- ================================================================
+-- PROMOCIONES Y DESCUENTOS
+-- ================================================================
+
+INSERT INTO PROMOCION
+(id_promocion, nombre, descripcion, tipo, valor, categoria, isbn, fecha_inicio, fecha_fin, activo)
+VALUES
+(1, 'Día del Libro - 15% Descuento', '15% de rebaja en novelas y clásicos universales', 'porcentaje', 15.00, 'Novela', NULL, '2026-01-01', '2026-12-31', TRUE),
+(2, 'Convenio Escolar Colegios', '10% de rebaja directa en literatura Infantil', 'porcentaje', 10.00, 'Infantil', NULL, '2026-03-01', '2026-11-30', TRUE),
+(3, 'Promo Programadores Tech', 'Bono de $5.000 en libros de informática y programación', 'monto_fijo', 5000.00, 'Programacion', NULL, '2026-01-01', '2026-12-31', TRUE),
+(4, '2x1 Sagas Juveniles', 'Lleva dos y paga uno en ejemplares de La Sombra del Viento', '2x1', 50.00, 'Novela', '9788423341802', '2026-05-01', '2026-12-31', TRUE);
 
 -- ================================================================
 -- PEDIDOS Y COTIZACIONES
