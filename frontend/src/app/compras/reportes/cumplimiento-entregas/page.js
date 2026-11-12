@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import ErpTopbar from "@/components/ErpTopbar";
+import ErpModuleShell from "@/components/ErpModuleShell";
 import ErpIcon from "@/components/ErpIcon";
 import ComprasNav from "@/components/ComprasNav";
 import { fetchProveedores, fetchReporteCumplimientoEntregas } from "@/lib/compras-api";
@@ -147,25 +147,14 @@ export default function ReporteCumplimientoEntregasPage() {
   }
 
   return (
-    <div className="erp-shell">
-      <ErpTopbar />
-
-      <main className="erp-main">
-        <section className="compras-hero">
-          <div>
-            <div className="erp-Landing-badge">
-              <ErpIcon name="clock" />
-              <span>CU-C12 · Cumplimiento de Entregas OC vs Recepción</span>
-            </div>
-            <h1 className="compras-title">Cumplimiento de entregas</h1>
-            <p className="compras-Lead">
-              Evalúa el cumplimiento en plazo y cantidad de las órdenes de compra frente a las
-              recepciones registradas en bodega según la fecha de entrega pactada.
-            </p>
-          </div>
-        </section>
-
-        <ComprasNav />
+    <ErpModuleShell
+      module="compras"
+      title="Cumplimiento de entregas"
+      description="Evalúa el cumplimiento en plazo y cantidad de las órdenes de compra frente a las recepciones registradas en bodega según la fecha de entrega pactada."
+      liveData
+      subnav={<ComprasNav />}
+    >
+      <div className="erp-main">
 
         <section className="compras-panel" style={{ marginBottom: "1.5rem" }}>
           <form
@@ -398,8 +387,8 @@ export default function ReporteCumplimientoEntregasPage() {
             </section>
           </>
         )}
-      </main>
-    </div>
+      </div>
+    </ErpModuleShell>
   );
 }
 

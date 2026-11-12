@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import ErpTopbar from "@/components/ErpTopbar";
+import ErpModuleShell from "@/components/ErpModuleShell";
 import ErpIcon from "@/components/ErpIcon";
 import ComprasNav from "@/components/ComprasNav";
 import { fetchProveedores, fetchReporteCuentasPorPagar } from "@/lib/compras-api";
-import { formatCurrency } from "@/lib/compras-data";
+import { formatCurrency } from "@/lib/compras-format";
 
 function hoyIso() {
   const d = new Date();
@@ -124,25 +124,14 @@ export default function ReporteCuentasPorPagarPage() {
   }
 
   return (
-    <div className="erp-shell">
-      <ErpTopbar />
-
-      <main className="erp-main">
-        <section className="compras-hero">
-          <div>
-            <div className="erp-Landing-badge">
-              <ErpIcon name="accounting" />
-              <span>CU-C10 · Cuentas por Pagar</span>
-            </div>
-            <h1 className="compras-title">Cuentas por pagar</h1>
-            <p className="compras-Lead">
-              Visualiza las facturas de proveedor pendientes de pago clasificadas por tramo de
-              antigüedad y vencimiento respecto a la fecha de corte seleccionada.
-            </p>
-          </div>
-        </section>
-
-        <ComprasNav />
+    <ErpModuleShell
+      module="compras"
+      title="Cuentas por pagar"
+      description="Visualiza las facturas de proveedor pendientes de pago clasificadas por tramo de antigüedad y vencimiento respecto a la fecha de corte seleccionada."
+      liveData
+      subnav={<ComprasNav />}
+    >
+      <div className="erp-main">
 
         <section className="compras-panel" style={{ marginBottom: "1.5rem" }}>
           <form
@@ -353,8 +342,8 @@ export default function ReporteCuentasPorPagarPage() {
             </section>
           </>
         )}
-      </main>
-    </div>
+      </div>
+    </ErpModuleShell>
   );
 }
 

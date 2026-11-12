@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import ErpTopbar from "@/components/ErpTopbar";
+import ErpModuleShell from "@/components/ErpModuleShell";
 import ErpIcon from "@/components/ErpIcon";
 import ComprasNav from "@/components/ComprasNav";
 import { fetchReporteGastoCategoria } from "@/lib/compras-api";
-import { formatCurrency } from "@/lib/compras-data";
+import { formatCurrency } from "@/lib/compras-format";
 
 function getHoyISO() {
   const d = new Date();
@@ -102,25 +102,14 @@ export default function ReporteGastoCategoriaPage() {
       : 1;
 
   return (
-    <div className="erp-shell">
-      <ErpTopbar />
-
-      <main className="erp-main">
-        <section className="compras-hero">
-          <div>
-            <div className="erp-Landing-badge">
-              <ErpIcon name="book" />
-              <span>CU-C13 · Rotación y Gasto por Categoría</span>
-            </div>
-            <h1 className="compras-title">Gasto por categoría</h1>
-            <p className="compras-Lead">
-              Analiza la distribución del gasto en compras (IVA incluido) y las unidades adquiridas
-              por categoría de libro dentro del período seleccionado.
-            </p>
-          </div>
-        </section>
-
-        <ComprasNav />
+    <ErpModuleShell
+      module="compras"
+      title="Gasto por categoría"
+      description="Analiza la distribución del gasto en compras (IVA incluido) y las unidades adquiridas por categoría de libro dentro del período seleccionado."
+      liveData
+      subnav={<ComprasNav />}
+    >
+      <div className="erp-main">
 
         <section className="compras-panel" style={{ marginBottom: "1.5rem" }}>
           <form
@@ -357,8 +346,8 @@ export default function ReporteGastoCategoriaPage() {
             </section>
           </>
         )}
-      </main>
-    </div>
+      </div>
+    </ErpModuleShell>
   );
 }
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import ErpTopbar from "@/components/ErpTopbar";
+import ErpModuleShell from "@/components/ErpModuleShell";
 import ErpIcon from "@/components/ErpIcon";
 import ComprasNav from "@/components/ComprasNav";
 import {
@@ -200,25 +200,14 @@ export default function RecepcionMercanciaPage() {
   }
 
   return (
-    <div className="erp-shell">
-      <ErpTopbar />
-
-      <main className="erp-main">
-        <section className="compras-hero">
-          <div>
-            <div className="erp-Landing-badge">
-              <ErpIcon name="inventory" />
-              <span>CU-C05 · Recepción de Mercancía</span>
-            </div>
-            <h1 className="compras-title">Recepción de mercancía</h1>
-            <p className="compras-Lead">
-              Selecciona una orden de compra aprobada o con recepción parcial, verifica las cantidades
-              recibidas por producto y confirma el ingreso al inventario.
-            </p>
-          </div>
-        </section>
-
-        <ComprasNav />
+    <ErpModuleShell
+      module="compras"
+      title="Recepción de mercancía"
+      description="Selecciona una orden de compra aprobada o con recepción parcial, verifica las cantidades recibidas por producto y confirma el ingreso al inventario."
+      liveData
+      subnav={<ComprasNav />}
+    >
+      <div className="erp-main">
 
         {mensajeExito && (
           <div className="compras-alert compras-alert--ok" role="status">
@@ -538,8 +527,8 @@ export default function RecepcionMercanciaPage() {
             </form>
           </section>
         )}
-      </main>
-    </div>
+      </div>
+    </ErpModuleShell>
   );
 }
 

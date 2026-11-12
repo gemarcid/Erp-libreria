@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import ErpTopbar from "@/components/ErpTopbar";
+import ErpModuleShell from "@/components/ErpModuleShell";
 import ErpIcon from "@/components/ErpIcon";
 import ComprasNav from "@/components/ComprasNav";
 import {
@@ -9,7 +9,7 @@ import {
   evaluarConciliacionFactura,
   conciliarFacturaYProgramarPago,
 } from "@/lib/compras-api";
-import { formatCurrency } from "@/lib/compras-data";
+import { formatCurrency } from "@/lib/compras-format";
 
 function hoyIso() {
   const d = new Date();
@@ -184,25 +184,14 @@ export default function ConciliacionYPagosPage() {
   }
 
   return (
-    <div className="erp-shell">
-      <ErpTopbar />
-
-      <main className="erp-main">
-        <section className="compras-hero">
-          <div>
-            <div className="erp-Landing-badge">
-              <ErpIcon name="calendar" />
-              <span>CU-C08 · Conciliación de Facturas y Programación de Pago</span>
-            </div>
-            <h1 className="compras-title">Conciliación y pagos</h1>
-            <p className="compras-Lead">
-              Compara las facturas de proveedor contra la orden de compra y las cantidades
-              efectivamente recibidas en bodega antes de programar su fecha de pago.
-            </p>
-          </div>
-        </section>
-
-        <ComprasNav />
+    <ErpModuleShell
+      module="compras"
+      title="Conciliación y pagos"
+      description="Compara las facturas de proveedor contra la orden de compra y las cantidades efectivamente recibidas en bodega antes de programar su fecha de pago."
+      liveData
+      subnav={<ComprasNav />}
+    >
+      <div className="erp-main">
 
         {mensajeExito && (
           <div className="compras-alert compras-alert--ok" role="status">
@@ -557,8 +546,8 @@ export default function ConciliacionYPagosPage() {
             )}
           </section>
         )}
-      </main>
-    </div>
+      </div>
+    </ErpModuleShell>
   );
 }
 

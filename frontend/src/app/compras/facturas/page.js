@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import ErpTopbar from "@/components/ErpTopbar";
+import ErpModuleShell from "@/components/ErpModuleShell";
 import ErpIcon from "@/components/ErpIcon";
 import ComprasNav from "@/components/ComprasNav";
 import {
@@ -9,7 +9,7 @@ import {
   fetchFacturasProveedor,
   registrarFacturaProveedor,
 } from "@/lib/compras-api";
-import { formatCurrency } from "@/lib/compras-data";
+import { formatCurrency } from "@/lib/compras-format";
 
 function hoyIso() {
   const d = new Date();
@@ -179,25 +179,14 @@ export default function FacturasProveedorPage() {
   }
 
   return (
-    <div className="erp-shell">
-      <ErpTopbar />
-
-      <main className="erp-main">
-        <section className="compras-hero">
-          <div>
-            <div className="erp-Landing-badge">
-              <ErpIcon name="accounting" />
-              <span>CU-C07 · Registro de Facturas de Proveedor</span>
-            </div>
-            <h1 className="compras-title">Facturas de proveedor</h1>
-            <p className="compras-Lead">
-              Selecciona una orden de compra recibida (total o parcialmente) pendiente de facturar,
-              verifica o ajusta los montos neto e IVA y registra la factura para su conciliación.
-            </p>
-          </div>
-        </section>
-
-        <ComprasNav />
+    <ErpModuleShell
+      module="compras"
+      title="Facturas de proveedor"
+      description="Selecciona una orden de compra recibida (total o parcialmente) pendiente de facturar, verifica o ajusta los montos neto e IVA y registra la factura para su conciliación."
+      liveData
+      subnav={<ComprasNav />}
+    >
+      <div className="erp-main">
 
         {mensajeExito && (
           <div className="compras-alert compras-alert--ok" role="status">
@@ -613,8 +602,8 @@ export default function FacturasProveedorPage() {
             </div>
           )}
         </section>
-      </main>
-    </div>
+      </div>
+    </ErpModuleShell>
   );
 }
 
