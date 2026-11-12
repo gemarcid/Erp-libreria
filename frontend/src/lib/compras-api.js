@@ -138,10 +138,20 @@ export async function crearOrdenCompra(datos) {
   return result;
 }
 
-// Punto de llamada preparado para la siguiente instrucción (envío de la orden al proveedor)
 export async function enviarOrdenCompraProveedor(idOc) {
-  await obtenerToken();
-  return { idOc, pendienteImplementacionEnvio: true };
+  const token = await obtenerToken();
+  const { response, result } = await requestVentasBackend(`/api/ordenes-compra/${idOc}/enviar`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(result.error || "No se pudo enviar la orden de compra al proveedor.");
+  }
+
+  return result;
 }
 
 export async function aprobarOrdenCompra(id) {

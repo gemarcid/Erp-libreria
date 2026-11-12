@@ -58,6 +58,8 @@ export default function OrdenesCompraPage() {
   const [cargando, setCargando] = useState(true);
   const [errorGeneral, setErrorGeneral] = useState("");
   const [mensajeConfirmacion, setMensajeConfirmacion] = useState("");
+  const [tipoMensaje, setTipoMensaje] = useState("success");
+  const [reenviandoId, setReenviandoId] = useState(null);
 
   // Filtros
   const [filtroEstado, setFiltroEstado] = useState("");
@@ -431,7 +433,7 @@ export default function OrdenesCompraPage() {
     return true;
   }
 
-  // Guardar nueva orden
+  // Guardar nueva orden y enviarla al proveedor
   async function handleGuardarOrden(event) {
     event.preventDefault();
     setMensajeConfirmacion("");
@@ -442,6 +444,13 @@ export default function OrdenesCompraPage() {
 
     setGuardando(true);
     try {
+      const provSeleccionado = proveedoresActivos.find(
+        (p) => String(p.idProveedor ?? p.id_proveedor) === String(formProveedorId)
+      );
+      const nombreProveedor =
+        provSeleccionado?.razonSocial || provSeleccionado?.razon_social || "proveedor";
+
+      // 1. Primero se guarda la orden en la base de datos
       const creada = await crearOrdenCompra({
         idProveedor: parseInt(formProveedorId, 10),
         fechaEntrega: formFechaEntrega,
@@ -455,8 +464,17 @@ export default function OrdenesCompraPage() {
 
       const idNuevaOc = creada.idOc ?? creada.id_oc;
 
-      // Punto de llamada preparado para el envío al proveedor (se implementa en la siguiente instrucción)
-      await enviarOrdenCompraProveedor(idNuevaOc);
+      // 2. Después se intenta el envío al proveedor.
+      // Un fallo en el envío nunca borra ni deshace la orden ya guardada.
+      let envio = null;
+      try {
+        envio = await enviarOrdenCompraProveedor(idNuevaOc);
+      } catch (errEnvio) {
+        envio = {
+          enviada: false,
+          error: errEnvio?.message || "No se pudo completar el envío al proveedor.",
+        };
+      }
 
       setModalNuevoAbierto(false);
       setFiltroEstado("");
@@ -464,12 +482,15 @@ export default function OrdenesCompraPage() {
       setFiltroNumero("");
       await cargarOrdenes();
 
-      setMensajeConfirmacion(
-        creada.mensaje ||
-          `Orden de compra #${idNuevaOc} generada exitosamente en estado pendiente por un total de ${formatMoney(
-            creada.total
-          )}.`
-      );
+      if (envio && envio.enviada) {
+        setTipoMensaje("success");
+        setMensajeConfirmacion(
+          `Orden #${idNuevaOc} generada y enviada a ${envio.proveedorNombre || nombreProveedor}`
+        );
+      } else {
+        setTipoMensaje("warning");
+        setMensajeConfirmacion(`Orden #${idNuevaOc} generada, pero no se pudo enviar`);
+      }
     } catch (err) {
       setFormError(err.message || "Error al crear la orden de compra.");
     } finally {
@@ -477,17 +498,69 @@ export default function OrdenesCompraPage() {
     }
   }
 
+  // Reenviar una orden pendiente al proveedor
+  async function handleReenviar(idOc, event) {
+    if (event) {
+      event.stopPropagation();
+    }
+    if (!idOc || reenviandoId === idOc || procesandoAccion) return;
+
+    setReenviandoId(idOc);
+    setProcesandoAccion(true);
+    setErrorGeneral("");
+    setDetalleError("");
+
+    try {
+      const envio = await enviarOrdenCompraProveedor(idOc);
+      await cargarOrdenes();
+
+      const idDetalleAbierto = ordenSeleccionada?.idOc || ordenSeleccionada?.id_oc;
+      if (idDetalleAbierto && Number(idDetalleAbierto) === Number(idOc)) {
+        await verDetalle(idOc);
+      }
+
+      if (envio && envio.enviada) {
+        setTipoMensaje("success");
+        setMensajeConfirmacion(
+          `Orden #${idOc} generada y enviada a ${envio.proveedorNombre || "proveedor"}`
+        );
+      } else {
+        setTipoMensaje("warning");
+        setMensajeConfirmacion(`Orden #${idOc} generada, pero no se pudo enviar`);
+        if (idDetalleAbierto && Number(idDetalleAbierto) === Number(idOc) && envio?.error) {
+          setDetalleError(`No se pudo enviar la orden #${idOc}: ${envio.error}`);
+        }
+      }
+    } catch (err) {
+      const msg = err.message || "No se pudo reenviar la orden de compra.";
+      const idDetalleAbierto = ordenSeleccionada?.idOc || ordenSeleccionada?.id_oc;
+      if (idDetalleAbierto && Number(idDetalleAbierto) === Number(idOc)) {
+        setDetalleError(msg);
+      } else {
+        setErrorGeneral(msg);
+      }
+    } finally {
+      setReenviandoId(null);
+      setProcesandoAccion(false);
+    }
+  }
+
   const nivelCompras = moduleAccessLevel(usuario, "compras");
   const puedeAprobar = nivelCompras === 3;
   const puedeCrear = nivelCompras >= 2;
 
-  function obtenerEtiquetaEstado(oc) {
-    if (!oc) return "";
+  function esOrdenPendienteDeEnvio(oc) {
+    if (!oc) return false;
     const estado = (oc.estado || "").toLowerCase();
     const fechaEnvio = oc.fechaEnvio ?? oc.fecha_envio ?? null;
     const intentosEnvio = Number(oc.intentosEnvio ?? oc.intentos_envio ?? 0);
-    if (estado === "pendiente" && !fechaEnvio && intentosEnvio > 0) {
-      return "pendiente de envío";
+    return estado === "pendiente" && !fechaEnvio && intentosEnvio > 0;
+  }
+
+  function obtenerEtiquetaEstado(oc) {
+    if (!oc) return "";
+    if (esOrdenPendienteDeEnvio(oc)) {
+      return "Pendiente de envío";
     }
     return oc.estado;
   }
@@ -565,9 +638,9 @@ export default function OrdenesCompraPage() {
             style={{
               padding: "12px 16px",
               borderRadius: "8px",
-              backgroundColor: "#e8f5e9",
-              border: "1px solid #81c784",
-              color: "#1b5e20",
+              backgroundColor: tipoMensaje === "warning" ? "#fff8e1" : "#e8f5e9",
+              border: tipoMensaje === "warning" ? "1px solid #ffb74d" : "1px solid #81c784",
+              color: tipoMensaje === "warning" ? "#e65100" : "#1b5e20",
               display: "flex",
               justifyContent: "space-between",
               alignItems: "center",
@@ -575,14 +648,14 @@ export default function OrdenesCompraPage() {
               fontWeight: "600",
             }}
           >
-            <span>✓ {mensajeConfirmacion}</span>
+            <span>{tipoMensaje === "warning" ? "⚠ " : "✓ "}{mensajeConfirmacion}</span>
             <button
               type="button"
               onClick={() => setMensajeConfirmacion("")}
               style={{
                 background: "none",
                 border: "none",
-                color: "#1b5e20",
+                color: tipoMensaje === "warning" ? "#e65100" : "#1b5e20",
                 cursor: "pointer",
                 fontWeight: "bold",
                 fontSize: "15px",
@@ -696,7 +769,7 @@ export default function OrdenesCompraPage() {
                       <th scope="col" style={{ width: "120px", textAlign: "left" }}>Emisión</th>
                       <th scope="col" style={{ width: "120px", textAlign: "left" }}>Entrega</th>
                       <th scope="col" style={{ width: "130px", textAlign: "right" }}>Total</th>
-                      <th scope="col" style={{ width: "140px", textAlign: "center" }}>Estado</th>
+                      <th scope="col" style={{ width: "220px", textAlign: "center" }}>Estado</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -705,6 +778,7 @@ export default function OrdenesCompraPage() {
                       const provNombre = oc.proveedorNombre || oc.razon_social;
                       const entrega = oc.fechaEntrega || oc.fecha_entrega;
                       const etiquetaEstado = obtenerEtiquetaEstado(oc);
+                      const pendienteEnvio = esOrdenPendienteDeEnvio(oc);
 
                       return (
                         <tr
@@ -727,9 +801,41 @@ export default function OrdenesCompraPage() {
                             {formatMoney(oc.total)}
                           </td>
                           <td style={{ textAlign: "center" }}>
-                            <span className={`erp-status ${getBadgeClass(etiquetaEstado)}`}>
-                              {etiquetaEstado}
-                            </span>
+                            <div
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                gap: "8px",
+                                flexWrap: "wrap",
+                              }}
+                            >
+                              <span className={`erp-status ${getBadgeClass(etiquetaEstado)}`}>
+                                {etiquetaEstado}
+                              </span>
+                              {pendienteEnvio && puedeCrear && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => handleReenviar(id, e)}
+                                  disabled={reenviandoId === id || procesandoAccion}
+                                  style={{
+                                    backgroundColor: "var(--color-primary)",
+                                    color: "#ffffff",
+                                    border: "none",
+                                    borderRadius: "6px",
+                                    padding: "4px 10px",
+                                    fontSize: "11px",
+                                    fontWeight: "600",
+                                    cursor:
+                                      reenviandoId === id || procesandoAccion
+                                        ? "not-allowed"
+                                        : "pointer",
+                                  }}
+                                >
+                                  {reenviandoId === id ? "Reenviando…" : "Reenviar"}
+                                </button>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       );
@@ -829,7 +935,7 @@ export default function OrdenesCompraPage() {
                 <p className="erp-empty">Cargando líneas y desglose…</p>
               ) : (
                 <>
-                  {/* Encabezado informativo */}
+                  {/* Encabezado informativo leído desde la base de datos */}
                   <div
                     style={{
                       display: "grid",
@@ -847,12 +953,28 @@ export default function OrdenesCompraPage() {
                       <strong>{ordenSeleccionada.proveedorNombre}</strong> ({ordenSeleccionada.proveedorRut || "—"})
                     </div>
                     <div>
-                      <span style={{ color: "var(--color-text-muted)", display: "block" }}>Emisión:</span>
+                      <span style={{ color: "var(--color-text-muted)", display: "block" }}>Correo del proveedor:</span>
+                      <strong>{ordenSeleccionada.proveedorCorreo || "Sin correo registrado"}</strong>
+                    </div>
+                    <div>
+                      <span style={{ color: "var(--color-text-muted)", display: "block" }}>Fecha de emisión:</span>
                       <strong>{ordenSeleccionada.fecha}</strong>
                     </div>
                     <div>
-                      <span style={{ color: "var(--color-text-muted)", display: "block" }}>Entrega estimada:</span>
+                      <span style={{ color: "var(--color-text-muted)", display: "block" }}>Fecha de entrega:</span>
                       <strong>{ordenSeleccionada.fechaEntrega || "No definida"}</strong>
+                    </div>
+                    <div>
+                      <span style={{ color: "var(--color-text-muted)", display: "block" }}>Fecha y hora de envío:</span>
+                      <strong>{ordenSeleccionada.fechaEnvio || ordenSeleccionada.fecha_envio || "No enviada"}</strong>
+                    </div>
+                    <div>
+                      <span style={{ color: "var(--color-text-muted)", display: "block" }}>Intentos de envío:</span>
+                      <strong>{ordenSeleccionada.intentosEnvio ?? ordenSeleccionada.intentos_envio ?? 0}</strong>
+                    </div>
+                    <div>
+                      <span style={{ color: "var(--color-text-muted)", display: "block" }}>Estado:</span>
+                      <strong>{obtenerEtiquetaEstado(ordenSeleccionada)}</strong>
                     </div>
                     <div>
                       <span style={{ color: "var(--color-text-muted)", display: "block" }}>Creado por:</span>
@@ -936,48 +1058,76 @@ export default function OrdenesCompraPage() {
                     }}
                   >
                     <div>
-                      {ordenSeleccionada.estado === "pendiente" && puedeAprobar ? (
-                        <div style={{ display: "flex", gap: "10px" }}>
-                          <button
-                            type="button"
-                            onClick={handleAprobar}
-                            disabled={procesandoAccion}
-                            style={{
-                              backgroundColor: "#2e7d32",
-                              color: "#fff",
-                              border: "none",
-                              padding: "8px 16px",
-                              borderRadius: "7px",
-                              fontWeight: "600",
-                              cursor: procesandoAccion ? "not-allowed" : "pointer",
-                            }}
-                          >
-                            ✓ Aprobar Orden
-                          </button>
-                          <button
-                            type="button"
-                            onClick={handleRechazar}
-                            disabled={procesandoAccion}
-                            style={{
-                              backgroundColor: "#c62828",
-                              color: "#fff",
-                              border: "none",
-                              padding: "8px 16px",
-                              borderRadius: "7px",
-                              fontWeight: "600",
-                              cursor: procesandoAccion ? "not-allowed" : "pointer",
-                            }}
-                          >
-                            ✕ Rechazar Orden
-                          </button>
+                      {ordenSeleccionada.estado === "pendiente" ? (
+                        <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
+                          {puedeCrear && (
+                            <button
+                              type="button"
+                              onClick={(e) =>
+                                handleReenviar(ordenSeleccionada.idOc || ordenSeleccionada.id_oc, e)
+                              }
+                              disabled={procesandoAccion}
+                              style={{
+                                backgroundColor: "var(--color-primary)",
+                                color: "#fff",
+                                border: "none",
+                                padding: "8px 16px",
+                                borderRadius: "7px",
+                                fontWeight: "600",
+                                cursor: procesandoAccion ? "not-allowed" : "pointer",
+                              }}
+                            >
+                              {reenviandoId === (ordenSeleccionada.idOc || ordenSeleccionada.id_oc)
+                                ? "Reenviando…"
+                                : esOrdenPendienteDeEnvio(ordenSeleccionada)
+                                ? "Reenviar"
+                                : "Enviar al proveedor"}
+                            </button>
+                          )}
+                          {puedeAprobar ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={handleAprobar}
+                                disabled={procesandoAccion}
+                                style={{
+                                  backgroundColor: "#2e7d32",
+                                  color: "#fff",
+                                  border: "none",
+                                  padding: "8px 16px",
+                                  borderRadius: "7px",
+                                  fontWeight: "600",
+                                  cursor: procesandoAccion ? "not-allowed" : "pointer",
+                                }}
+                              >
+                                ✓ Aprobar Orden
+                              </button>
+                              <button
+                                type="button"
+                                onClick={handleRechazar}
+                                disabled={procesandoAccion}
+                                style={{
+                                  backgroundColor: "#c62828",
+                                  color: "#fff",
+                                  border: "none",
+                                  padding: "8px 16px",
+                                  borderRadius: "7px",
+                                  fontWeight: "600",
+                                  cursor: procesandoAccion ? "not-allowed" : "pointer",
+                                }}
+                              >
+                                ✕ Rechazar Orden
+                              </button>
+                            </>
+                          ) : (
+                            <small style={{ color: "var(--color-text-muted)" }}>
+                              * Se requiere perfil de Administrador para autorizar o rechazar esta orden.
+                            </small>
+                          )}
                         </div>
-                      ) : ordenSeleccionada.estado === "pendiente" && !puedeAprobar ? (
-                        <small style={{ color: "var(--color-text-muted)" }}>
-                          * Se requiere perfil de Administrador para autorizar o rechazar esta orden.
-                        </small>
                       ) : (
                         <small style={{ color: "var(--color-text-muted)" }}>
-                          Esta orden ya fue {ordenSeleccionada.estado} y no admite cambios de estado.
+                          Esta orden ya fue {ordenSeleccionada.estado} y no admite reenvío ni cambios manuales de estado.
                         </small>
                       )}
                     </div>

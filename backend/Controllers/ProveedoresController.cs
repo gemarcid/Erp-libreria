@@ -175,11 +175,19 @@ namespace backend.Controllers
                 return Content(HttpStatusCode.BadRequest, new { error = "El contacto no puede superar 150 caracteres." });
             }
 
+            string correo = string.IsNullOrWhiteSpace(dto.Correo) ? null : dto.Correo.Trim();
+            if (correo != null && correo.Length > 100)
+            {
+                return Content(HttpStatusCode.BadRequest, new { error = "El correo no puede superar 100 caracteres." });
+            }
+
             string condicionPago = string.IsNullOrWhiteSpace(dto.CondicionPago) ? null : dto.CondicionPago.Trim();
             if (condicionPago != null && condicionPago.Length > 80)
             {
                 return Content(HttpStatusCode.BadRequest, new { error = "La condición de pago no puede superar 80 caracteres." });
             }
+
+            bool activo = dto.Activo;
 
             try
             {
@@ -198,8 +206,8 @@ namespace backend.Controllers
                     }
 
                     const string insertSql = @"
-                        INSERT INTO PROVEEDOR (rut, razon_social, contacto, condicion_pago)
-                        VALUES (@rut, @razon_social, @contacto, @condicion_pago);
+                        INSERT INTO PROVEEDOR (rut, razon_social, contacto, correo, condicion_pago, activo)
+                        VALUES (@rut, @razon_social, @contacto, @correo, @condicion_pago, @activo);
                         SELECT LAST_INSERT_ID();";
 
                     using (var transaction = conn.BeginTransaction())
@@ -208,7 +216,9 @@ namespace backend.Controllers
                         cmd.Parameters.AddWithValue("@rut", rutFormateado);
                         cmd.Parameters.AddWithValue("@razon_social", razonSocial);
                         cmd.Parameters.AddWithValue("@contacto", (object)contacto ?? DBNull.Value);
+                        cmd.Parameters.AddWithValue("@correo", (object)correo ?? DBNull.Value);
                         cmd.Parameters.AddWithValue("@condicion_pago", (object)condicionPago ?? DBNull.Value);
+                        cmd.Parameters.AddWithValue("@activo", activo);
 
                         int newId = Convert.ToInt32(cmd.ExecuteScalar());
                         SecurityPolicy.Log(conn, transaction, actor, "compras", "Crear proveedor", "Proveedor #" + newId);
@@ -220,7 +230,9 @@ namespace backend.Controllers
                             Rut = rutFormateado,
                             RazonSocial = razonSocial,
                             Contacto = contacto,
-                            CondicionPago = condicionPago
+                            Correo = correo,
+                            CondicionPago = condicionPago,
+                            Activo = activo
                         };
 
                         return Content(HttpStatusCode.Created, nuevo);
@@ -284,11 +296,19 @@ namespace backend.Controllers
                 return Content(HttpStatusCode.BadRequest, new { error = "El contacto no puede superar 150 caracteres." });
             }
 
+            string correo = string.IsNullOrWhiteSpace(dto.Correo) ? null : dto.Correo.Trim();
+            if (correo != null && correo.Length > 100)
+            {
+                return Content(HttpStatusCode.BadRequest, new { error = "El correo no puede superar 100 caracteres." });
+            }
+
             string condicionPago = string.IsNullOrWhiteSpace(dto.CondicionPago) ? null : dto.CondicionPago.Trim();
             if (condicionPago != null && condicionPago.Length > 80)
             {
                 return Content(HttpStatusCode.BadRequest, new { error = "La condición de pago no puede superar 80 caracteres." });
             }
+
+            bool activo = dto.Activo;
 
             try
             {
@@ -319,7 +339,7 @@ namespace backend.Controllers
 
                     const string updateSql = @"
                         UPDATE PROVEEDOR
-                        SET rut = @rut, razon_social = @razon_social, contacto = @contacto, condicion_pago = @condicion_pago
+                        SET rut = @rut, razon_social = @razon_social, contacto = @contacto, correo = @correo, condicion_pago = @condicion_pago, activo = @activo
                         WHERE id_proveedor = @id";
 
                     using (var transaction = conn.BeginTransaction())
@@ -329,7 +349,9 @@ namespace backend.Controllers
                         cmd.Parameters.AddWithValue("@rut", rutFormateado);
                         cmd.Parameters.AddWithValue("@razon_social", razonSocial);
                         cmd.Parameters.AddWithValue("@contacto", (object)contacto ?? DBNull.Value);
+                        cmd.Parameters.AddWithValue("@correo", (object)correo ?? DBNull.Value);
                         cmd.Parameters.AddWithValue("@condicion_pago", (object)condicionPago ?? DBNull.Value);
+                        cmd.Parameters.AddWithValue("@activo", activo);
 
                         cmd.ExecuteNonQuery();
                         SecurityPolicy.Log(conn, transaction, actor, "compras", "Editar proveedor", "Proveedor #" + id);
@@ -341,7 +363,9 @@ namespace backend.Controllers
                             Rut = rutFormateado,
                             RazonSocial = razonSocial,
                             Contacto = contacto,
-                            CondicionPago = condicionPago
+                            Correo = correo,
+                            CondicionPago = condicionPago,
+                            Activo = activo
                         };
 
                         return Ok(actualizado);

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Net;
+using System.Text.RegularExpressions;
 using System.Web;
 using System.Web.Http;
 using backend.Data;
@@ -118,7 +119,7 @@ namespace backend.Controllers
 
                     const string sqlHeader = @"
                         SELECT oc.id_oc, oc.id_proveedor, p.razon_social, p.rut AS proveedor_rut,
-                               COALESCE(p.correo, p.contacto) AS proveedor_correo,
+                               p.correo AS proveedor_correo,
                                oc.id_usuario, u.nombre AS usuario_nombre,
                                oc.fecha, oc.fecha_entrega, oc.total, oc.estado,
                                oc.fecha_envio, oc.intentos_envio
@@ -486,6 +487,233 @@ namespace backend.Controllers
                 System.Diagnostics.Trace.TraceError("Error al registrar orden de compra: {0}", ex);
                 return Content(HttpStatusCode.ServiceUnavailable, new { error = "No se pudo registrar la orden de compra." });
             }
+        }
+
+        [HttpPost]
+        [HttpPut]
+        [Route("{id:int}/enviar")]
+        public IHttpActionResult EnviarAlProveedor(int id)
+        {
+            HttpContext.Current.Response.Cache.SetNoStore();
+
+            try
+            {
+                using (var conn = DbConnectionFactory.CreateConnection())
+                {
+                    var actor = SessionAccess.RequireModule(new HttpRequestWrapper(HttpContext.Current.Request), conn, "compras", SecurityPolicy.Edit);
+
+                    using (var trans = conn.BeginTransaction())
+                    {
+                        try
+                        {
+                            const string selectSql = @"
+                                SELECT oc.id_oc, oc.id_proveedor, oc.estado, oc.fecha, oc.fecha_entrega,
+                                       oc.total, oc.fecha_envio, oc.intentos_envio,
+                                       p.razon_social, p.correo
+                                FROM ORDEN_COMPRA oc
+                                INNER JOIN PROVEEDOR p ON oc.id_proveedor = p.id_proveedor
+                                WHERE oc.id_oc = @id
+                                FOR UPDATE";
+
+                            string estadoActual;
+                            string razonSocial;
+                            string correoProveedor;
+                            DateTime fechaEmision;
+                            DateTime? fechaEntrega;
+                            decimal totalOrden;
+                            int intentosAnteriores;
+
+                            using (var selectCmd = new MySqlCommand(selectSql, conn, trans))
+                            {
+                                selectCmd.Parameters.AddWithValue("@id", id);
+                                using (var reader = selectCmd.ExecuteReader())
+                                {
+                                    if (!reader.Read())
+                                    {
+                                        reader.Close();
+                                        trans.Rollback();
+                                        return Content(HttpStatusCode.NotFound, new { error = $"La orden de compra #{id} no existe." });
+                                    }
+
+                                    estadoActual = reader["estado"].ToString();
+                                    razonSocial = reader["razon_social"].ToString();
+                                    correoProveedor = reader["correo"] != DBNull.Value ? reader["correo"].ToString() : null;
+                                    fechaEmision = Convert.ToDateTime(reader["fecha"]);
+                                    fechaEntrega = reader["fecha_entrega"] != DBNull.Value
+                                        ? (DateTime?)Convert.ToDateTime(reader["fecha_entrega"])
+                                        : null;
+                                    totalOrden = Convert.ToDecimal(reader["total"]);
+                                    intentosAnteriores = reader["intentos_envio"] != DBNull.Value
+                                        ? Convert.ToInt32(reader["intentos_envio"])
+                                        : 0;
+                                }
+                            }
+
+                            if (!string.Equals(estadoActual, "pendiente", StringComparison.OrdinalIgnoreCase))
+                            {
+                                trans.Rollback();
+                                return Content(HttpStatusCode.Conflict, new
+                                {
+                                    error = $"La orden de compra #{id} no se puede enviar ni reenviar porque su estado actual es '{estadoActual}'. Solo se permiten envíos para órdenes en estado 'pendiente'."
+                                });
+                            }
+
+                            bool envioExitoso = EnviarOrdenAProveedor(
+                                id,
+                                razonSocial,
+                                correoProveedor,
+                                fechaEmision,
+                                fechaEntrega,
+                                totalOrden,
+                                out string errorEnvio);
+
+                            int nuevosIntentos = intentosAnteriores + 1;
+
+                            if (envioExitoso)
+                            {
+                                DateTime ahora = DateTime.Now;
+                                const string updateExitoSql = @"
+                                    UPDATE ORDEN_COMPRA
+                                    SET estado = 'aprobada',
+                                        fecha_envio = @fecha_envio,
+                                        intentos_envio = intentos_envio + 1
+                                    WHERE id_oc = @id AND estado = 'pendiente'";
+
+                                using (var updateCmd = new MySqlCommand(updateExitoSql, conn, trans))
+                                {
+                                    updateCmd.Parameters.AddWithValue("@id", id);
+                                    updateCmd.Parameters.AddWithValue("@fecha_envio", ahora);
+                                    updateCmd.ExecuteNonQuery();
+                                }
+
+                                SecurityPolicy.Log(
+                                    conn,
+                                    trans,
+                                    actor,
+                                    "compras",
+                                    "Enviar orden de compra a proveedor",
+                                    $"Orden #{id} enviada a {razonSocial} ({correoProveedor}) en intento #{nuevosIntentos}");
+
+                                trans.Commit();
+
+                                string fechaEnvioStr = ahora.ToString("yyyy-MM-dd HH:mm:ss");
+                                return Ok(new
+                                {
+                                    enviada = true,
+                                    id_oc = id,
+                                    idOc = id,
+                                    estado = "aprobada",
+                                    fecha_envio = fechaEnvioStr,
+                                    fechaEnvio = fechaEnvioStr,
+                                    intentos_envio = nuevosIntentos,
+                                    intentosEnvio = nuevosIntentos,
+                                    proveedorNombre = razonSocial,
+                                    proveedorCorreo = correoProveedor,
+                                    mensaje = $"Orden #{id} generada y enviada a {razonSocial}"
+                                });
+                            }
+                            else
+                            {
+                                const string updateFalloSql = @"
+                                    UPDATE ORDEN_COMPRA
+                                    SET estado = 'pendiente',
+                                        fecha_envio = NULL,
+                                        intentos_envio = intentos_envio + 1
+                                    WHERE id_oc = @id AND estado = 'pendiente'";
+
+                                using (var updateCmd = new MySqlCommand(updateFalloSql, conn, trans))
+                                {
+                                    updateCmd.Parameters.AddWithValue("@id", id);
+                                    updateCmd.ExecuteNonQuery();
+                                }
+
+                                SecurityPolicy.Log(
+                                    conn,
+                                    trans,
+                                    actor,
+                                    "compras",
+                                    "Intento fallido envío orden de compra",
+                                    $"Orden #{id} (Intento #{nuevosIntentos}): {errorEnvio}");
+
+                                trans.Commit();
+
+                                return Ok(new
+                                {
+                                    enviada = false,
+                                    id_oc = id,
+                                    idOc = id,
+                                    estado = "pendiente",
+                                    fecha_envio = (string)null,
+                                    fechaEnvio = (string)null,
+                                    intentos_envio = nuevosIntentos,
+                                    intentosEnvio = nuevosIntentos,
+                                    proveedorNombre = razonSocial,
+                                    proveedorCorreo = correoProveedor,
+                                    error = errorEnvio,
+                                    mensaje = $"Orden #{id} generada, pero no se pudo enviar"
+                                });
+                            }
+                        }
+                        catch
+                        {
+                            trans.Rollback();
+                            throw;
+                        }
+                    }
+                }
+            }
+            catch (HttpException ex)
+            {
+                return Content((HttpStatusCode)ex.GetHttpCode(), new { error = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Trace.TraceError("Error al enviar orden de compra #{0} al proveedor: {1}", id, ex);
+                return Content(HttpStatusCode.ServiceUnavailable, new { error = "No se pudo procesar el envío de la orden de compra." });
+            }
+        }
+
+        /// <summary>
+        /// Función separada de despacho de la orden de compra al proveedor.
+        /// Valida el correo electrónico del proveedor y simula únicamente el envío del correo,
+        /// quedando lista para conectar un servicio de correo real (SMTP / API transaccional) más adelante.
+        /// </summary>
+        private static bool EnviarOrdenAProveedor(
+            int idOc,
+            string razonSocial,
+            string correoProveedor,
+            DateTime fechaEmision,
+            DateTime? fechaEntrega,
+            decimal totalOrden,
+            out string errorEnvio)
+        {
+            errorEnvio = null;
+
+            if (string.IsNullOrWhiteSpace(correoProveedor))
+            {
+                errorEnvio = "El proveedor no tiene correo electrónico registrado.";
+                return false;
+            }
+
+            string correoLimpio = correoProveedor.Trim();
+            if (!Regex.IsMatch(correoLimpio, @"^[^@\s]+@[^@\s]+\.[^@\s]+$"))
+            {
+                errorEnvio = $"El correo electrónico del proveedor ('{correoLimpio}') no tiene un formato válido.";
+                return false;
+            }
+
+            // Simulación de envío de correo al proveedor (sin enviar correos reales).
+            // Aquí se conectará el servicio real de correo electrónico posteriormente.
+            System.Diagnostics.Trace.TraceInformation(
+                "[Simulación Envío OC] Orden #{0} enviada al proveedor '{1}' <{2}> | Emisión: {3:yyyy-MM-dd} | Entrega: {4} | Total: {5}",
+                idOc,
+                razonSocial,
+                correoLimpio,
+                fechaEmision,
+                fechaEntrega.HasValue ? fechaEntrega.Value.ToString("yyyy-MM-dd") : "No definida",
+                totalOrden);
+
+            return true;
         }
 
         [HttpPut]
