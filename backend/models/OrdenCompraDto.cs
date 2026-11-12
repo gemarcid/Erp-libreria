@@ -15,6 +15,8 @@ namespace backend.Models
         public string FechaEntrega { get; set; }
         public decimal Total { get; set; }
         public string Estado { get; set; }
+        public string FechaEnvio { get; set; }
+        public int IntentosEnvio { get; set; }
 
         [JsonProperty("id_oc")]
         public int IdOcSnake => IdOc;
@@ -25,9 +27,17 @@ namespace backend.Models
         [JsonProperty("fecha_entrega")]
         public string FechaEntregaSnake => FechaEntrega;
 
+        [JsonProperty("fecha_envio")]
+        public string FechaEnvioSnake => FechaEnvio;
+
+        [JsonProperty("intentos_envio")]
+        public int IntentosEnvioSnake => IntentosEnvio;
+
         public bool ShouldSerializeIdOcSnake() => false;
         public bool ShouldSerializeRazonSocialSnake() => false;
         public bool ShouldSerializeFechaEntregaSnake() => false;
+        public bool ShouldSerializeFechaEnvioSnake() => false;
+        public bool ShouldSerializeIntentosEnvioSnake() => false;
     }
 
     public class OrdenCompraDetalleItemDto
@@ -37,6 +47,7 @@ namespace backend.Models
         public string Titulo { get; set; }
         public int Cantidad { get; set; }
         public decimal PrecioPactado { get; set; }
+        public decimal IvaPorcentaje { get; set; } = 19m;
         public decimal Subtotal { get; set; }
 
         [JsonProperty("id_detalle_oc")]
@@ -45,8 +56,12 @@ namespace backend.Models
         [JsonProperty("precio_pactado")]
         public decimal PrecioPactadoSnake => PrecioPactado;
 
+        [JsonProperty("iva_porcentaje")]
+        public decimal IvaPorcentajeSnake => IvaPorcentaje;
+
         public bool ShouldSerializeIdDetalleOcSnake() => false;
         public bool ShouldSerializePrecioPactadoSnake() => false;
+        public bool ShouldSerializeIvaPorcentajeSnake() => false;
     }
 
     public class OrdenCompraCompletaDto
@@ -55,11 +70,14 @@ namespace backend.Models
         public int IdProveedor { get; set; }
         public string ProveedorNombre { get; set; }
         public string ProveedorRut { get; set; }
+        public string ProveedorCorreo { get; set; }
         public int IdUsuario { get; set; }
         public string UsuarioNombre { get; set; }
         public string Fecha { get; set; }
         public string FechaEntrega { get; set; }
         public string Estado { get; set; }
+        public string FechaEnvio { get; set; }
+        public int IntentosEnvio { get; set; }
         public decimal Neto { get; set; }
         public decimal Iva { get; set; }
         public decimal Total { get; set; }
@@ -71,9 +89,13 @@ namespace backend.Models
         public string Isbn { get; set; }
         public int Cantidad { get; set; }
         public decimal PrecioPactado { get; set; }
+        public decimal? IvaPorcentaje { get; set; }
 
         [JsonProperty("precio_pactado")]
         private decimal PrecioPactadoSnake { set { if (PrecioPactado == 0) PrecioPactado = value; } }
+
+        [JsonProperty("iva_porcentaje")]
+        private decimal? IvaPorcentajeSnake { set { if (!IvaPorcentaje.HasValue) IvaPorcentaje = value; } }
     }
 
     public class CrearOrdenCompraRequestDto

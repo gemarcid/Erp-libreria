@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Net;
+using System.Text.RegularExpressions;
 using System.Web;
 using System.Web.Http;
 using backend.Data;
@@ -13,9 +15,17 @@ namespace backend.Controllers
     [RoutePrefix("api/proveedores")]
     public class ProveedoresController : ApiController
     {
+        private static readonly Regex CorreoRegex = new Regex(
+            @"^[^@\s]+@[^@\s]+\.[^@\s]+$",
+            RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
         [HttpGet]
         [Route("")]
-        public IHttpActionResult GetAll([FromUri] string buscar = null)
+        public IHttpActionResult GetAll(
+            [FromUri] string buscar = null,
+            [FromUri] bool soloActivos = false,
+            [FromUri] string estado = null,
+            [FromUri] string categoria = null)
         {
             HttpContext.Current.Response.Cache.SetNoStore();
             var proveedores = new List<ProveedorDto>();
@@ -26,12 +36,30 @@ namespace backend.Controllers
                     SessionAccess.RequireModule(new HttpRequestWrapper(HttpContext.Current.Request), conn, "compras", SecurityPolicy.Read);
 
                     string sql = @"
-                        SELECT id_proveedor, rut, razon_social, contacto, condicion_pago
-                        FROM PROVEEDOR";
+                        SELECT id_proveedor, rut, razon_social, contacto, correo,
+                               condicion_pago, limite_credito, dias_credito, categorias, activo
+                        FROM PROVEEDOR
+                        WHERE 1=1";
+
+                    string estadoNorm = string.IsNullOrWhiteSpace(estado) ? null : estado.Trim().ToLowerInvariant();
+                    if (soloActivos || estadoNorm == "activo")
+                    {
+                        sql += " AND activo = TRUE";
+                    }
+                    else if (estadoNorm == "inactivo")
+                    {
+                        sql += " AND activo = FALSE";
+                    }
 
                     if (!string.IsNullOrWhiteSpace(buscar))
                     {
-                        sql += " WHERE rut LIKE @buscar OR razon_social LIKE @buscar";
+                        sql += " AND (rut LIKE @buscar OR razon_social LIKE @buscar)";
+                    }
+
+                    string categoriaNorm = string.IsNullOrWhiteSpace(categoria) ? null : categoria.Trim();
+                    if (categoriaNorm != null)
+                    {
+                        sql += " AND FIND_IN_SET(@categoria, categorias) > 0";
                     }
 
                     sql += " ORDER BY razon_social, rut";
@@ -43,18 +71,16 @@ namespace backend.Controllers
                             cmd.Parameters.AddWithValue("@buscar", "%" + buscar.Trim() + "%");
                         }
 
+                        if (categoriaNorm != null)
+                        {
+                            cmd.Parameters.AddWithValue("@categoria", categoriaNorm);
+                        }
+
                         using (var reader = cmd.ExecuteReader())
                         {
                             while (reader.Read())
                             {
-                                proveedores.Add(new ProveedorDto
-                                {
-                                    IdProveedor = Convert.ToInt32(reader["id_proveedor"]),
-                                    Rut = reader["rut"].ToString(),
-                                    RazonSocial = reader["razon_social"].ToString(),
-                                    Contacto = reader["contacto"] != DBNull.Value ? reader["contacto"].ToString() : null,
-                                    CondicionPago = reader["condicion_pago"] != DBNull.Value ? reader["condicion_pago"].ToString() : null
-                                });
+                                proveedores.Add(MapReaderToDto(reader));
                             }
                         }
                     }
@@ -73,6 +99,31 @@ namespace backend.Controllers
         }
 
         [HttpGet]
+        [Route("categorias")]
+        public IHttpActionResult GetCategoriasDisponibles()
+        {
+            HttpContext.Current.Response.Cache.SetNoStore();
+            try
+            {
+                using (var conn = DbConnectionFactory.CreateConnection())
+                {
+                    SessionAccess.RequireModule(new HttpRequestWrapper(HttpContext.Current.Request), conn, "compras", SecurityPolicy.Read);
+                    var categorias = ObtenerCategoriasValidasLibro(conn);
+                    return Ok(categorias);
+                }
+            }
+            catch (HttpException ex)
+            {
+                return Content((HttpStatusCode)ex.GetHttpCode(), new { error = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Trace.TraceError("Error al consultar categorías de libros para proveedores: {0}", ex);
+                return Content(HttpStatusCode.ServiceUnavailable, new { error = "No se pudieron obtener las categorías." });
+            }
+        }
+
+        [HttpGet]
         [Route("{id:int}")]
         public IHttpActionResult GetById(int id)
         {
@@ -83,33 +134,13 @@ namespace backend.Controllers
                 {
                     SessionAccess.RequireModule(new HttpRequestWrapper(HttpContext.Current.Request), conn, "compras", SecurityPolicy.Read);
 
-                    const string sql = @"
-                        SELECT id_proveedor, rut, razon_social, contacto, condicion_pago
-                        FROM PROVEEDOR
-                        WHERE id_proveedor = @id
-                        LIMIT 1";
-
-                    using (var cmd = new MySqlCommand(sql, conn))
+                    var proveedor = ObtenerProveedorPorId(conn, id);
+                    if (proveedor == null)
                     {
-                        cmd.Parameters.AddWithValue("@id", id);
-                        using (var reader = cmd.ExecuteReader())
-                        {
-                            if (!reader.Read())
-                            {
-                                return Content(HttpStatusCode.NotFound, new { error = "Proveedor no encontrado." });
-                            }
-
-                            var proveedor = new ProveedorDto
-                            {
-                                IdProveedor = Convert.ToInt32(reader["id_proveedor"]),
-                                Rut = reader["rut"].ToString(),
-                                RazonSocial = reader["razon_social"].ToString(),
-                                Contacto = reader["contacto"] != DBNull.Value ? reader["contacto"].ToString() : null,
-                                CondicionPago = reader["condicion_pago"] != DBNull.Value ? reader["condicion_pago"].ToString() : null
-                            };
-                            return Ok(proveedor);
-                        }
+                        return Content(HttpStatusCode.NotFound, new { error = "Proveedor no encontrado." });
                     }
+
+                    return Ok(proveedor);
                 }
             }
             catch (HttpException ex)
@@ -128,48 +159,21 @@ namespace backend.Controllers
         public IHttpActionResult Create([FromBody] ProveedorDto dto)
         {
             HttpContext.Current.Response.Cache.SetNoStore();
-            if (dto == null)
+            if (!ValidarCamposBasicos(
+                dto,
+                out string rutFormateado,
+                out string razonSocial,
+                out string contacto,
+                out string correo,
+                out string condicionPago,
+                out decimal limiteCredito,
+                out int diasCredito,
+                out string errorValidacion))
             {
-                return Content(HttpStatusCode.BadRequest, new { error = "Datos del proveedor no proporcionados." });
+                return Content(HttpStatusCode.BadRequest, new { error = errorValidacion });
             }
 
-            if (string.IsNullOrWhiteSpace(dto.Rut))
-            {
-                return Content(HttpStatusCode.BadRequest, new { error = "El RUT es obligatorio." });
-            }
-
-            if (string.IsNullOrWhiteSpace(dto.RazonSocial))
-            {
-                return Content(HttpStatusCode.BadRequest, new { error = "La razón social es obligatoria." });
-            }
-
-            if (!TryNormalizeRut(dto.Rut, out string rutFormateado, out string errorRut))
-            {
-                return Content(HttpStatusCode.BadRequest, new { error = errorRut });
-            }
-
-            if (rutFormateado.Length > 15)
-            {
-                return Content(HttpStatusCode.BadRequest, new { error = "El RUT no puede superar 15 caracteres." });
-            }
-
-            string razonSocial = dto.RazonSocial.Trim();
-            if (razonSocial.Length > 150)
-            {
-                return Content(HttpStatusCode.BadRequest, new { error = "La razón social no puede superar 150 caracteres." });
-            }
-
-            string contacto = string.IsNullOrWhiteSpace(dto.Contacto) ? null : dto.Contacto.Trim();
-            if (contacto != null && contacto.Length > 150)
-            {
-                return Content(HttpStatusCode.BadRequest, new { error = "El contacto no puede superar 150 caracteres." });
-            }
-
-            string condicionPago = string.IsNullOrWhiteSpace(dto.CondicionPago) ? null : dto.CondicionPago.Trim();
-            if (condicionPago != null && condicionPago.Length > 80)
-            {
-                return Content(HttpStatusCode.BadRequest, new { error = "La condición de pago no puede superar 80 caracteres." });
-            }
+            bool activo = dto.Activo;
 
             try
             {
@@ -177,19 +181,30 @@ namespace backend.Controllers
                 {
                     var actor = SessionAccess.RequireModule(new HttpRequestWrapper(HttpContext.Current.Request), conn, "compras", SecurityPolicy.Edit);
 
-                    const string checkSql = "SELECT COUNT(*) FROM PROVEEDOR WHERE rut = @rut";
-                    using (var checkCmd = new MySqlCommand(checkSql, conn))
+                    if (!ValidarYNormalizarCategorias(conn, dto.Categorias, out string categoriasCsv, out List<string> categoriasLimpias, out string errorCategorias))
                     {
-                        checkCmd.Parameters.AddWithValue("@rut", rutFormateado);
-                        if (Convert.ToInt32(checkCmd.ExecuteScalar()) > 0)
+                        return Content(HttpStatusCode.BadRequest, new { error = errorCategorias });
+                    }
+
+                    var existente = BuscarProveedorPorRut(conn, rutFormateado, null);
+                    if (existente != null)
+                    {
+                        return Content(HttpStatusCode.Conflict, new
                         {
-                            return Content(HttpStatusCode.Conflict, new { error = "El RUT ingresado ya está registrado para otro proveedor." });
-                        }
+                            error = "El proveedor ya está registrado.",
+                            proveedorExistente = existente
+                        });
                     }
 
                     const string insertSql = @"
-                        INSERT INTO PROVEEDOR (rut, razon_social, contacto, condicion_pago)
-                        VALUES (@rut, @razon_social, @contacto, @condicion_pago);
+                        INSERT INTO PROVEEDOR (
+                            rut, razon_social, contacto, correo, condicion_pago,
+                            limite_credito, dias_credito, categorias, activo
+                        )
+                        VALUES (
+                            @rut, @razon_social, @contacto, @correo, @condicion_pago,
+                            @limite_credito, @dias_credito, @categorias, @activo
+                        );
                         SELECT LAST_INSERT_ID();";
 
                     using (var transaction = conn.BeginTransaction())
@@ -198,7 +213,12 @@ namespace backend.Controllers
                         cmd.Parameters.AddWithValue("@rut", rutFormateado);
                         cmd.Parameters.AddWithValue("@razon_social", razonSocial);
                         cmd.Parameters.AddWithValue("@contacto", (object)contacto ?? DBNull.Value);
+                        cmd.Parameters.AddWithValue("@correo", (object)correo ?? DBNull.Value);
                         cmd.Parameters.AddWithValue("@condicion_pago", (object)condicionPago ?? DBNull.Value);
+                        cmd.Parameters.AddWithValue("@limite_credito", limiteCredito);
+                        cmd.Parameters.AddWithValue("@dias_credito", diasCredito);
+                        cmd.Parameters.AddWithValue("@categorias", (object)categoriasCsv ?? DBNull.Value);
+                        cmd.Parameters.AddWithValue("@activo", activo);
 
                         int newId = Convert.ToInt32(cmd.ExecuteScalar());
                         SecurityPolicy.Log(conn, transaction, actor, "compras", "Crear proveedor", "Proveedor #" + newId);
@@ -210,7 +230,13 @@ namespace backend.Controllers
                             Rut = rutFormateado,
                             RazonSocial = razonSocial,
                             Contacto = contacto,
-                            CondicionPago = condicionPago
+                            Correo = correo,
+                            CondicionPago = condicionPago,
+                            LimiteCredito = limiteCredito,
+                            DiasCredito = diasCredito,
+                            Categorias = categoriasLimpias,
+                            CategoriasTexto = categoriasCsv,
+                            Activo = activo
                         };
 
                         return Content(HttpStatusCode.Created, nuevo);
@@ -223,7 +249,7 @@ namespace backend.Controllers
             }
             catch (MySqlException ex) when (ex.Number == 1062)
             {
-                return Content(HttpStatusCode.Conflict, new { error = "El RUT ingresado ya está registrado para otro proveedor." });
+                return Content(HttpStatusCode.Conflict, new { error = "El proveedor ya está registrado." });
             }
             catch (Exception ex)
             {
@@ -237,48 +263,21 @@ namespace backend.Controllers
         public IHttpActionResult Update(int id, [FromBody] ProveedorDto dto)
         {
             HttpContext.Current.Response.Cache.SetNoStore();
-            if (dto == null)
+            if (!ValidarCamposBasicos(
+                dto,
+                out string rutFormateado,
+                out string razonSocial,
+                out string contacto,
+                out string correo,
+                out string condicionPago,
+                out decimal limiteCredito,
+                out int diasCredito,
+                out string errorValidacion))
             {
-                return Content(HttpStatusCode.BadRequest, new { error = "Datos del proveedor no proporcionados." });
+                return Content(HttpStatusCode.BadRequest, new { error = errorValidacion });
             }
 
-            if (string.IsNullOrWhiteSpace(dto.Rut))
-            {
-                return Content(HttpStatusCode.BadRequest, new { error = "El RUT es obligatorio." });
-            }
-
-            if (string.IsNullOrWhiteSpace(dto.RazonSocial))
-            {
-                return Content(HttpStatusCode.BadRequest, new { error = "La razón social es obligatoria." });
-            }
-
-            if (!TryNormalizeRut(dto.Rut, out string rutFormateado, out string errorRut))
-            {
-                return Content(HttpStatusCode.BadRequest, new { error = errorRut });
-            }
-
-            if (rutFormateado.Length > 15)
-            {
-                return Content(HttpStatusCode.BadRequest, new { error = "El RUT no puede superar 15 caracteres." });
-            }
-
-            string razonSocial = dto.RazonSocial.Trim();
-            if (razonSocial.Length > 150)
-            {
-                return Content(HttpStatusCode.BadRequest, new { error = "La razón social no puede superar 150 caracteres." });
-            }
-
-            string contacto = string.IsNullOrWhiteSpace(dto.Contacto) ? null : dto.Contacto.Trim();
-            if (contacto != null && contacto.Length > 150)
-            {
-                return Content(HttpStatusCode.BadRequest, new { error = "El contacto no puede superar 150 caracteres." });
-            }
-
-            string condicionPago = string.IsNullOrWhiteSpace(dto.CondicionPago) ? null : dto.CondicionPago.Trim();
-            if (condicionPago != null && condicionPago.Length > 80)
-            {
-                return Content(HttpStatusCode.BadRequest, new { error = "La condición de pago no puede superar 80 caracteres." });
-            }
+            bool activo = dto.Activo;
 
             try
             {
@@ -286,30 +285,38 @@ namespace backend.Controllers
                 {
                     var actor = SessionAccess.RequireModule(new HttpRequestWrapper(HttpContext.Current.Request), conn, "compras", SecurityPolicy.Edit);
 
-                    const string existsSql = "SELECT COUNT(*) FROM PROVEEDOR WHERE id_proveedor = @id";
-                    using (var existsCmd = new MySqlCommand(existsSql, conn))
+                    var actual = ObtenerProveedorPorId(conn, id);
+                    if (actual == null)
                     {
-                        existsCmd.Parameters.AddWithValue("@id", id);
-                        if (Convert.ToInt32(existsCmd.ExecuteScalar()) == 0)
-                        {
-                            return Content(HttpStatusCode.NotFound, new { error = "Proveedor no encontrado." });
-                        }
+                        return Content(HttpStatusCode.NotFound, new { error = "Proveedor no encontrado." });
                     }
 
-                    const string duplicateSql = "SELECT COUNT(*) FROM PROVEEDOR WHERE rut = @rut AND id_proveedor != @id";
-                    using (var dupCmd = new MySqlCommand(duplicateSql, conn))
+                    if (!ValidarYNormalizarCategorias(conn, dto.Categorias, out string categoriasCsv, out List<string> categoriasLimpias, out string errorCategorias))
                     {
-                        dupCmd.Parameters.AddWithValue("@rut", rutFormateado);
-                        dupCmd.Parameters.AddWithValue("@id", id);
-                        if (Convert.ToInt32(dupCmd.ExecuteScalar()) > 0)
+                        return Content(HttpStatusCode.BadRequest, new { error = errorCategorias });
+                    }
+
+                    var existente = BuscarProveedorPorRut(conn, rutFormateado, id);
+                    if (existente != null)
+                    {
+                        return Content(HttpStatusCode.Conflict, new
                         {
-                            return Content(HttpStatusCode.Conflict, new { error = "El RUT ingresado ya está registrado para otro proveedor." });
-                        }
+                            error = "El proveedor ya está registrado.",
+                            proveedorExistente = existente
+                        });
                     }
 
                     const string updateSql = @"
                         UPDATE PROVEEDOR
-                        SET rut = @rut, razon_social = @razon_social, contacto = @contacto, condicion_pago = @condicion_pago
+                        SET rut = @rut,
+                            razon_social = @razon_social,
+                            contacto = @contacto,
+                            correo = @correo,
+                            condicion_pago = @condicion_pago,
+                            limite_credito = @limite_credito,
+                            dias_credito = @dias_credito,
+                            categorias = @categorias,
+                            activo = @activo
                         WHERE id_proveedor = @id";
 
                     using (var transaction = conn.BeginTransaction())
@@ -319,7 +326,12 @@ namespace backend.Controllers
                         cmd.Parameters.AddWithValue("@rut", rutFormateado);
                         cmd.Parameters.AddWithValue("@razon_social", razonSocial);
                         cmd.Parameters.AddWithValue("@contacto", (object)contacto ?? DBNull.Value);
+                        cmd.Parameters.AddWithValue("@correo", (object)correo ?? DBNull.Value);
                         cmd.Parameters.AddWithValue("@condicion_pago", (object)condicionPago ?? DBNull.Value);
+                        cmd.Parameters.AddWithValue("@limite_credito", limiteCredito);
+                        cmd.Parameters.AddWithValue("@dias_credito", diasCredito);
+                        cmd.Parameters.AddWithValue("@categorias", (object)categoriasCsv ?? DBNull.Value);
+                        cmd.Parameters.AddWithValue("@activo", activo);
 
                         cmd.ExecuteNonQuery();
                         SecurityPolicy.Log(conn, transaction, actor, "compras", "Editar proveedor", "Proveedor #" + id);
@@ -331,7 +343,13 @@ namespace backend.Controllers
                             Rut = rutFormateado,
                             RazonSocial = razonSocial,
                             Contacto = contacto,
-                            CondicionPago = condicionPago
+                            Correo = correo,
+                            CondicionPago = condicionPago,
+                            LimiteCredito = limiteCredito,
+                            DiasCredito = diasCredito,
+                            Categorias = categoriasLimpias,
+                            CategoriasTexto = categoriasCsv,
+                            Activo = activo
                         };
 
                         return Ok(actualizado);
@@ -344,13 +362,303 @@ namespace backend.Controllers
             }
             catch (MySqlException ex) when (ex.Number == 1062)
             {
-                return Content(HttpStatusCode.Conflict, new { error = "El RUT ingresado ya está registrado para otro proveedor." });
+                return Content(HttpStatusCode.Conflict, new { error = "El proveedor ya está registrado." });
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Trace.TraceError("Error al editar proveedor {0}: {1}", id, ex);
                 return Content(HttpStatusCode.ServiceUnavailable, new { error = "No se pudo actualizar el proveedor." });
             }
+        }
+
+        private static ProveedorDto MapReaderToDto(MySqlDataReader reader)
+        {
+            string categoriasRaw = reader["categorias"] != DBNull.Value ? reader["categorias"].ToString() : null;
+            var listaCategorias = new List<string>();
+            if (!string.IsNullOrWhiteSpace(categoriasRaw))
+            {
+                foreach (var parte in categoriasRaw.Split(','))
+                {
+                    string limpia = parte.Trim();
+                    if (!string.IsNullOrEmpty(limpia))
+                    {
+                        listaCategorias.Add(limpia);
+                    }
+                }
+            }
+
+            return new ProveedorDto
+            {
+                IdProveedor = Convert.ToInt32(reader["id_proveedor"]),
+                Rut = reader["rut"].ToString(),
+                RazonSocial = reader["razon_social"].ToString(),
+                Contacto = reader["contacto"] != DBNull.Value ? reader["contacto"].ToString() : null,
+                Correo = reader["correo"] != DBNull.Value ? reader["correo"].ToString() : null,
+                CondicionPago = reader["condicion_pago"] != DBNull.Value ? reader["condicion_pago"].ToString() : null,
+                LimiteCredito = reader["limite_credito"] != DBNull.Value ? Convert.ToDecimal(reader["limite_credito"]) : 0m,
+                DiasCredito = reader["dias_credito"] != DBNull.Value ? Convert.ToInt32(reader["dias_credito"]) : 0,
+                Categorias = listaCategorias,
+                CategoriasTexto = categoriasRaw,
+                Activo = reader["activo"] == DBNull.Value || Convert.ToBoolean(reader["activo"])
+            };
+        }
+
+        private static ProveedorDto ObtenerProveedorPorId(MySqlConnection conn, int id)
+        {
+            const string sql = @"
+                SELECT id_proveedor, rut, razon_social, contacto, correo,
+                       condicion_pago, limite_credito, dias_credito, categorias, activo
+                FROM PROVEEDOR
+                WHERE id_proveedor = @id
+                LIMIT 1";
+
+            using (var cmd = new MySqlCommand(sql, conn))
+            {
+                cmd.Parameters.AddWithValue("@id", id);
+                using (var reader = cmd.ExecuteReader())
+                {
+                    if (!reader.Read())
+                    {
+                        return null;
+                    }
+                    return MapReaderToDto(reader);
+                }
+            }
+        }
+
+        private static ProveedorDto BuscarProveedorPorRut(MySqlConnection conn, string rut, int? excluirId)
+        {
+            string sql = @"
+                SELECT id_proveedor, rut, razon_social, contacto, correo,
+                       condicion_pago, limite_credito, dias_credito, categorias, activo
+                FROM PROVEEDOR
+                WHERE rut = @rut";
+
+            if (excluirId.HasValue)
+            {
+                sql += " AND id_proveedor != @excluirId";
+            }
+
+            sql += " LIMIT 1";
+
+            using (var cmd = new MySqlCommand(sql, conn))
+            {
+                cmd.Parameters.AddWithValue("@rut", rut);
+                if (excluirId.HasValue)
+                {
+                    cmd.Parameters.AddWithValue("@excluirId", excluirId.Value);
+                }
+
+                using (var reader = cmd.ExecuteReader())
+                {
+                    if (!reader.Read())
+                    {
+                        return null;
+                    }
+                    return MapReaderToDto(reader);
+                }
+            }
+        }
+
+        private static List<string> ObtenerCategoriasValidasLibro(MySqlConnection conn)
+        {
+            var categorias = new List<string>();
+            const string sql = @"
+                SELECT DISTINCT TRIM(categoria) AS categoria
+                FROM LIBRO
+                WHERE categoria IS NOT NULL
+                  AND TRIM(categoria) <> ''
+                ORDER BY categoria ASC";
+
+            using (var cmd = new MySqlCommand(sql, conn))
+            using (var reader = cmd.ExecuteReader())
+            {
+                while (reader.Read())
+                {
+                    categorias.Add(reader["categoria"].ToString());
+                }
+            }
+            return categorias;
+        }
+
+        private static bool ValidarCamposBasicos(
+            ProveedorDto dto,
+            out string rutFormateado,
+            out string razonSocial,
+            out string contacto,
+            out string correo,
+            out string condicionPago,
+            out decimal limiteCredito,
+            out int diasCredito,
+            out string error)
+        {
+            rutFormateado = null;
+            razonSocial = null;
+            contacto = null;
+            correo = null;
+            condicionPago = null;
+            limiteCredito = 0m;
+            diasCredito = 0;
+            error = null;
+
+            if (dto == null)
+            {
+                error = "Datos del proveedor no proporcionados.";
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(dto.Rut))
+            {
+                error = "El RUT es obligatorio.";
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(dto.RazonSocial))
+            {
+                error = "La razón social es obligatoria.";
+                return false;
+            }
+
+            if (!TryNormalizeRut(dto.Rut, out rutFormateado, out string errorRut))
+            {
+                error = errorRut;
+                return false;
+            }
+
+            if (rutFormateado.Length > 15)
+            {
+                error = "El RUT no puede superar 15 caracteres.";
+                return false;
+            }
+
+            razonSocial = dto.RazonSocial.Trim();
+            if (razonSocial.Length > 150)
+            {
+                error = "La razón social no puede superar 150 caracteres.";
+                return false;
+            }
+
+            contacto = string.IsNullOrWhiteSpace(dto.Contacto) ? null : dto.Contacto.Trim();
+            if (contacto != null && contacto.Length > 150)
+            {
+                error = "El contacto no puede superar 150 caracteres.";
+                return false;
+            }
+
+            correo = string.IsNullOrWhiteSpace(dto.Correo) ? null : dto.Correo.Trim();
+            if (correo != null)
+            {
+                if (correo.Length > 100)
+                {
+                    error = "El correo no puede superar 100 caracteres.";
+                    return false;
+                }
+
+                if (!CorreoRegex.IsMatch(correo))
+                {
+                    error = "El formato del correo electrónico no es válido.";
+                    return false;
+                }
+            }
+
+            condicionPago = string.IsNullOrWhiteSpace(dto.CondicionPago) ? null : dto.CondicionPago.Trim();
+            if (condicionPago != null && condicionPago.Length > 80)
+            {
+                error = "La condición de pago no puede superar 80 caracteres.";
+                return false;
+            }
+
+            if (dto.LimiteCredito < 0m)
+            {
+                error = "El límite de crédito no puede ser negativo.";
+                return false;
+            }
+
+            if (dto.DiasCredito < 0)
+            {
+                error = "Los días de crédito no pueden ser negativos.";
+                return false;
+            }
+
+            limiteCredito = Math.Round(dto.LimiteCredito, 2);
+            diasCredito = dto.DiasCredito;
+            return true;
+        }
+
+        private static bool ValidarYNormalizarCategorias(
+            MySqlConnection conn,
+            List<string> categoriasInput,
+            out string categoriasCsv,
+            out List<string> categoriasLimpias,
+            out string error)
+        {
+            categoriasCsv = null;
+            categoriasLimpias = new List<string>();
+            error = null;
+
+            if (categoriasInput == null || categoriasInput.Count == 0)
+            {
+                return true;
+            }
+
+            var catalogoValido = ObtenerCategoriasValidasLibro(conn);
+            var mapaCanonico = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var c in catalogoValido)
+            {
+                if (!mapaCanonico.ContainsKey(c))
+                {
+                    mapaCanonico[c] = c;
+                }
+            }
+
+            var vistos = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var item in categoriasInput)
+            {
+                string normalizada = (item ?? string.Empty).Trim();
+                if (string.IsNullOrEmpty(normalizada))
+                {
+                    error = "Las categorías no pueden contener elementos vacíos o solo espacios.";
+                    return false;
+                }
+
+                if (normalizada.Contains(","))
+                {
+                    error = $"La categoría '{normalizada}' no puede contener comas.";
+                    return false;
+                }
+
+                if (normalizada.Length > 80)
+                {
+                    error = $"La categoría '{normalizada}' supera el máximo de 80 caracteres.";
+                    return false;
+                }
+
+                if (!vistos.Add(normalizada))
+                {
+                    error = $"La categoría '{normalizada}' está duplicada.";
+                    return false;
+                }
+
+                if (!mapaCanonico.TryGetValue(normalizada, out string canonica))
+                {
+                    error = $"La categoría '{normalizada}' no existe en el catálogo de libros (LIBRO.categoria).";
+                    return false;
+                }
+
+                categoriasLimpias.Add(canonica);
+            }
+
+            categoriasLimpias = categoriasLimpias.OrderBy(c => c, StringComparer.OrdinalIgnoreCase).ToList();
+            categoriasCsv = string.Join(",", categoriasLimpias);
+
+            if (categoriasCsv.Length > 255)
+            {
+                error = "La lista de categorías seleccionada supera el máximo de 255 caracteres.";
+                return false;
+            }
+
+            return true;
         }
 
         private static bool TryNormalizeRut(string rutInput, out string formattedRut, out string error)

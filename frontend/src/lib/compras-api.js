@@ -18,9 +18,14 @@ async function obtenerToken() {
   return token;
 }
 
-export async function fetchProveedores(buscar = "") {
+export async function fetchProveedores(buscar = "", { soloActivos = false, estado = "", categoria = "" } = {}) {
   const token = await obtenerToken();
-  const query = buscar ? `?buscar=${encodeURIComponent(buscar.trim())}` : "";
+  const params = new URLSearchParams();
+  if (buscar && buscar.trim()) params.set("buscar", buscar.trim());
+  if (soloActivos) params.set("soloActivos", "true");
+  if (estado && estado.trim()) params.set("estado", estado.trim());
+  if (categoria && categoria.trim()) params.set("categoria", categoria.trim());
+  const query = params.toString() ? `?${params.toString()}` : "";
   const { response, result } = await requestVentasBackend(`/api/proveedores${query}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
@@ -30,6 +35,54 @@ export async function fetchProveedores(buscar = "") {
   }
 
   return Array.isArray(result) ? result : [];
+}
+
+export async function fetchCategoriasProveedor() {
+  const token = await obtenerToken();
+  const { response, result } = await requestVentasBackend("/api/proveedores/categorias", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!response.ok) {
+    throw new Error(result.error || "No se pudieron obtener las categorías de libros.");
+  }
+
+  return Array.isArray(result) ? result : [];
+}
+
+export async function guardarProveedorCatalogo(datos, idProveedor = null) {
+  const token = await obtenerToken();
+  const esEdicion = idProveedor !== null && idProveedor !== undefined;
+  const url = esEdicion ? `/api/proveedores/${idProveedor}` : "/api/proveedores";
+  const method = esEdicion ? "PUT" : "POST";
+
+  const { response, result } = await requestVentasBackend(url, {
+    method,
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(datos),
+  });
+
+  if (!response.ok) {
+    return {
+      ok: false,
+      status: response.status,
+      error: result.error || (esEdicion ? "No se pudo actualizar el proveedor." : "No se pudo registrar el proveedor."),
+      proveedorExistente: result.proveedorExistente || result.proveedor_existente || null,
+    };
+  }
+
+  return {
+    ok: true,
+    status: response.status,
+    proveedor: result,
+  };
+}
+
+export async function fetchProveedoresActivos(buscar = "") {
+  return fetchProveedores(buscar, { soloActivos: true });
 }
 
 export async function fetchProveedorPorId(id) {
@@ -126,6 +179,22 @@ export async function crearOrdenCompra(datos) {
 
   if (!response.ok) {
     throw new Error(result.error || "No se pudo crear la orden de compra.");
+  }
+
+  return result;
+}
+
+export async function enviarOrdenCompraProveedor(idOc) {
+  const token = await obtenerToken();
+  const { response, result } = await requestVentasBackend(`/api/ordenes-compra/${idOc}/enviar`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(result.error || "No se pudo enviar la orden de compra al proveedor.");
   }
 
   return result;
@@ -253,6 +322,189 @@ export async function fetchReporteHistorico({ desde, hasta, idProveedor } = {}) 
 
   if (!response.ok) {
     throw new Error(result.error || "No se pudo obtener el reporte histórico de compras.");
+  }
+
+  return result;
+}
+
+export async function fetchReporteVariacionPrecios({ desde, hasta, isbn, idProveedor } = {}) {
+  const token = await obtenerToken();
+  const params = new URLSearchParams();
+  if (desde) params.set("desde", desde);
+  if (hasta) params.set("hasta", hasta);
+  if (isbn) params.set("isbn", isbn);
+  if (idProveedor) params.set("id_proveedor", idProveedor);
+
+  const query = params.toString() ? `?${params.toString()}` : "";
+  const { response, result } = await requestVentasBackend(`/api/compras/reportes/variacion-precios${query}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!response.ok) {
+    throw new Error(result.error || "No se pudo obtener el reporte de variación de precios.");
+  }
+
+  return result;
+}
+
+export async function fetchOrdenesPendientesFacturar() {
+  const token = await obtenerToken();
+  const { response, result } = await requestVentasBackend("/api/facturas-proveedor/ordenes-pendientes", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!response.ok) {
+    throw new Error(result.error || "No se pudieron obtener las órdenes pendientes de facturar.");
+  }
+
+  return Array.isArray(result) ? result : [];
+}
+
+export async function fetchFacturasProveedor() {
+  const token = await obtenerToken();
+  const { response, result } = await requestVentasBackend("/api/facturas-proveedor", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!response.ok) {
+    throw new Error(result.error || "No se pudieron obtener las facturas de proveedor.");
+  }
+
+  return Array.isArray(result) ? result : [];
+}
+
+export async function registrarFacturaProveedor(datos) {
+  const token = await obtenerToken();
+  const { response, result } = await requestVentasBackend("/api/facturas-proveedor", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(datos),
+  });
+
+  if (!response.ok) {
+    return {
+      ok: false,
+      status: response.status,
+      error: result.error || "No se pudo registrar la factura de proveedor.",
+      facturaExistente: result.facturaExistente || result.factura_existente || null,
+    };
+  }
+
+  return {
+    ok: true,
+    status: response.status,
+    ...result,
+  };
+}
+
+export async function fetchFacturasPendientesConciliacion() {
+  const token = await obtenerToken();
+  const { response, result } = await requestVentasBackend("/api/facturas-proveedor/pendientes-conciliacion", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!response.ok) {
+    throw new Error(result.error || "No se pudieron obtener las facturas pendientes de conciliación.");
+  }
+
+  return Array.isArray(result) ? result : [];
+}
+
+export async function evaluarConciliacionFactura(idFactura) {
+  const token = await obtenerToken();
+  const { response, result } = await requestVentasBackend(`/api/facturas-proveedor/${idFactura}/evaluar`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!response.ok) {
+    throw new Error(result.error || "No se pudo evaluar la conciliación de la factura.");
+  }
+
+  return result;
+}
+
+export async function conciliarFacturaYProgramarPago(idFactura, fechaPago) {
+  const token = await obtenerToken();
+  const { response, result } = await requestVentasBackend(`/api/facturas-proveedor/${idFactura}/conciliar`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ fecha_pago: fechaPago }),
+  });
+
+  if (!response.ok) {
+    return {
+      ok: false,
+      status: response.status,
+      error: result.error || "No se pudo conciliar la factura ni programar el pago.",
+      evaluacion: result.evaluacion || null,
+    };
+  }
+
+  return {
+    ok: true,
+    status: response.status,
+    ...result,
+  };
+}
+
+export async function fetchReporteCuentasPorPagar({ fechaCorte, idProveedor } = {}) {
+  const token = await obtenerToken();
+  const params = new URLSearchParams();
+  if (fechaCorte !== undefined && fechaCorte !== null) params.set("fecha_corte", fechaCorte);
+  if (idProveedor) params.set("id_proveedor", idProveedor);
+
+  const query = params.toString() ? `?${params.toString()}` : "";
+  const { response, result } = await requestVentasBackend(`/api/compras/reportes/cuentas-por-pagar${query}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!response.ok) {
+    throw new Error(result.error || "No se pudo obtener el reporte de cuentas por pagar.");
+  }
+
+  return result;
+}
+
+export async function fetchReporteCumplimientoEntregas({ desde, hasta, idProveedor } = {}) {
+  const token = await obtenerToken();
+  const params = new URLSearchParams();
+  if (desde) params.set("desde", desde);
+  if (hasta) params.set("hasta", hasta);
+  if (idProveedor) params.set("id_proveedor", idProveedor);
+
+  const query = params.toString() ? `?${params.toString()}` : "";
+  const { response, result } = await requestVentasBackend(`/api/compras/reportes/cumplimiento-entregas${query}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!response.ok) {
+    throw new Error(result.error || "No se pudo obtener el reporte de cumplimiento de entregas.");
+  }
+
+  return result;
+}
+
+export async function fetchReporteGastoCategoria({ desde, hasta, categoria } = {}) {
+  const token = await obtenerToken();
+  const params = new URLSearchParams();
+  if (desde) params.set("desde", desde);
+  if (hasta) params.set("hasta", hasta);
+  if (categoria) params.set("categoria", categoria);
+
+  const query = params.toString() ? `?${params.toString()}` : "";
+  const { response, result } = await requestVentasBackend(`/api/compras/reportes/gasto-categoria${query}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!response.ok) {
+    throw new Error(result.error || "No se pudo obtener el reporte de gasto por categoría.");
   }
 
   return result;
