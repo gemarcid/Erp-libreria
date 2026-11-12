@@ -38,12 +38,21 @@ export default function ReportesVentasPage() {
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState("");
 
-  async function consultarReporte() {
+  function cambiarReporte(nuevoReporte) {
+    if (nuevoReporte === reporteActivo) return;
+    setReporteActivo(nuevoReporte);
+    setDatosReporte([]);
+    setResumen({});
+    setCargando(true);
+    setError("");
+  }
+
+  async function consultarReporte(tipoAUsar = reporteActivo) {
     setCargando(true);
     setError("");
     try {
       const params = new URLSearchParams();
-      params.set("tipo", reporteActivo);
+      params.set("tipo", tipoAUsar);
       if (desde) params.set("desde", desde);
       if (hasta) params.set("hasta", hasta);
       if (categoria !== "todos") params.set("categoria", categoria);
@@ -68,7 +77,7 @@ export default function ReportesVentasPage() {
 
   useEffect(() => {
     if (!loading && usuario) {
-      consultarReporte();
+      consultarReporte(reporteActivo);
     }
   }, [loading, usuario, reporteActivo, categoria, filtroRotacion]);
 
@@ -108,16 +117,16 @@ export default function ReportesVentasPage() {
     } else if (reporteActivo === "cuentas-cobrar") {
       filas = [
         ["Folio", "Cliente", "RUT", "Tipo", "Fecha Emisión", "Fecha Vencimiento", "Días Mora", "Tramo", "Saldo Pendiente"],
-        ...datosReporte.map((r) => [
-          r.folio,
-          r.cliente.nombre,
-          r.cliente.rut,
-          r.cliente.tipo,
-          r.fecha_emision,
-          r.fecha_vencimiento,
-          r.dias_mora,
-          r.tramo,
-          r.saldo_pendiente,
+        ...datosReporte.map((r, idx) => [
+          r.folio || (r.id_venta ? `F-${r.id_venta}` : `DOC-${idx + 1}`),
+          r.cliente?.nombre || r.cliente_nombre || "Cliente sin registrar",
+          r.cliente?.rut || r.cliente_rut || "S/R",
+          r.cliente?.tipo || r.tipo_cliente || "general",
+          r.fecha_emision || r.fecha || "",
+          r.fecha_vencimiento || "",
+          r.dias_mora || 0,
+          r.tramo || "",
+          r.saldo_pendiente ?? r.total ?? 0,
         ]),
       ];
     } else if (reporteActivo === "rotacion") {
@@ -176,35 +185,35 @@ export default function ReportesVentasPage() {
           <button
             type="button"
             className={`erp-button ${reporteActivo === "ranking" ? "erp-button-primary" : "erp-button-secondary"}`}
-            onClick={() => setReporteActivo("ranking")}
+            onClick={() => cambiarReporte("ranking")}
           >
             1. Ranking Clientes (Pareto)
           </button>
           <button
             type="button"
             className={`erp-button ${reporteActivo === "producto" ? "erp-button-primary" : "erp-button-secondary"}`}
-            onClick={() => setReporteActivo("producto")}
+            onClick={() => cambiarReporte("producto")}
           >
             2. Ventas por Producto y Categoría
           </button>
           <button
             type="button"
             className={`erp-button ${reporteActivo === "cuentas-cobrar" ? "erp-button-primary" : "erp-button-secondary"}`}
-            onClick={() => setReporteActivo("cuentas-cobrar")}
+            onClick={() => cambiarReporte("cuentas-cobrar")}
           >
             3. Cuentas por Cobrar (Facturas)
           </button>
           <button
             type="button"
             className={`erp-button ${reporteActivo === "rotacion" ? "erp-button-primary" : "erp-button-secondary"}`}
-            onClick={() => setReporteActivo("rotacion")}
+            onClick={() => cambiarReporte("rotacion")}
           >
             4. Rotación de Ventas (Top vs Stock Muerto)
           </button>
           <button
             type="button"
             className={`erp-button ${reporteActivo === "canales" ? "erp-button-primary" : "erp-button-secondary"}`}
-            onClick={() => setReporteActivo("canales")}
+            onClick={() => cambiarReporte("canales")}
           >
             5. Ventas por Canal y Sucursal
           </button>
@@ -258,7 +267,7 @@ export default function ReportesVentasPage() {
               </div>
               <div className="ventas-report-summary-card">
                 <span className="ventas-report-summary-label">Facturas en Mora (&gt;0 días)</span>
-                <strong>{(resumen.resumen_tramos?.mora_30 || 0) + (resumen.resumen_tramos?.mora_60 || 0)}</strong>
+                <strong>{(resumen.resumen_tramos?.mora_30 || 0) + (resumen.resumen_tramos?.mora_60 || 0) + (resumen.resumen_tramos?.mora_90_mas || 0)}</strong>
               </div>
             </>
           )}
@@ -398,19 +407,19 @@ export default function ReportesVentasPage() {
                   ) : datosReporte.length === 0 ? (
                     <tr><td colSpan="9" style={{ textAlign: "center", padding: "2rem" }}>No hay ventas registradas en el período.</td></tr>
                   ) : (
-                    datosReporte.map((r) => (
-                      <tr key={r.id_cliente}>
-                        <td><strong>#{r.posicion}</strong></td>
-                        <td>{r.rut}</td>
-                        <td><strong>{r.nombre}</strong></td>
-                        <td style={{ textTransform: "capitalize" }}>{r.tipo_cliente}</td>
-                        <td>{r.cantidad_ventas}</td>
-                        <td><strong>{formatMoney(r.total_vendido)}</strong></td>
-                        <td>{r.porcentaje}%</td>
-                        <td><strong>{r.porcentaje_acumulado}%</strong></td>
+                    datosReporte.map((r, idx) => (
+                      <tr key={r.id_cliente || r.rut || idx}>
+                        <td><strong>#{r.posicion ?? (idx + 1)}</strong></td>
+                        <td>{r.rut || "—"}</td>
+                        <td><strong>{r.nombre || "Cliente"}</strong></td>
+                        <td style={{ textTransform: "capitalize" }}>{r.tipo_cliente || "persona"}</td>
+                        <td>{r.cantidad_ventas ?? 0}</td>
+                        <td><strong>{formatMoney(r.total_vendido ?? 0)}</strong></td>
+                        <td>{r.porcentaje ?? 0}%</td>
+                        <td><strong>{r.porcentaje_acumulado ?? 0}%</strong></td>
                         <td>
                           <span className={`erp-badge ${r.clasificacion === "A" ? "erp-badge-green" : r.clasificacion === "B" ? "erp-badge-blue" : "erp-badge-gray"}`}>
-                            Zona {r.clasificacion} {r.clasificacion === "A" ? "(80% ingresos)" : r.clasificacion === "B" ? "(15% ingresos)" : "(5% cola larga)"}
+                            Zona {r.clasificacion || "C"} {r.clasificacion === "A" ? "(80% ingresos)" : r.clasificacion === "B" ? "(15% ingresos)" : "(5% cola larga)"}
                           </span>
                         </td>
                       </tr>
@@ -441,18 +450,18 @@ export default function ReportesVentasPage() {
                   ) : datosReporte.length === 0 ? (
                     <tr><td colSpan="8" style={{ textAlign: "center", padding: "2rem" }}>No se registraron ventas en esta categoría o período.</td></tr>
                   ) : (
-                    datosReporte.map((p) => (
-                      <tr key={p.isbn}>
-                        <td><code>{p.isbn}</code></td>
-                        <td><strong>{p.titulo}</strong></td>
-                        <td>{p.autor}</td>
-                        <td>{p.editorial}</td>
+                    datosReporte.map((p, idx) => (
+                      <tr key={p.isbn || idx}>
+                        <td><code>{p.isbn || "—"}</code></td>
+                        <td><strong>{p.titulo || "Título desconocido"}</strong></td>
+                        <td>{p.autor || "—"}</td>
+                        <td>{p.editorial || "—"}</td>
                         <td>
-                          <span className="erp-badge erp-badge-blue">{p.categoria}</span>
+                          <span className="erp-badge erp-badge-blue">{p.categoria || "General"}</span>
                         </td>
-                        <td><strong>{p.unidades_vendidas} unid.</strong></td>
-                        <td>{formatMoney(p.precio_promedio)}</td>
-                        <td><strong style={{ color: "#1a5c38" }}>{formatMoney(p.total_recaudado)}</strong></td>
+                        <td><strong>{p.unidades_vendidas ?? 0} unid.</strong></td>
+                        <td>{formatMoney(p.precio_promedio ?? 0)}</td>
+                        <td><strong style={{ color: "#1a5c38" }}>{formatMoney(p.total_recaudado ?? 0)}</strong></td>
                       </tr>
                     ))
                   )}
@@ -483,29 +492,37 @@ export default function ReportesVentasPage() {
                       ¡Excelente! No hay facturas pendientes ni morosas. La cartera está al día.
                     </td></tr>
                   ) : (
-                    datosReporte.map((f) => (
-                      <tr key={f.id_venta}>
-                        <td><strong>{f.folio}</strong></td>
-                        <td>
-                          <strong>{f.cliente.nombre}</strong>
-                          <div style={{ fontSize: "0.8rem", color: "#666", textTransform: "capitalize" }}>{f.cliente.tipo}</div>
-                        </td>
-                        <td>{f.cliente.rut}</td>
-                        <td>{f.fecha_emision}</td>
-                        <td><strong>{f.fecha_vencimiento}</strong></td>
-                        <td>
-                          <strong style={{ color: f.dias_mora > 0 ? "#dc2626" : "#27ae60" }}>
-                            {f.dias_mora > 0 ? `${f.dias_mora} días` : "Al día"}
-                          </strong>
-                        </td>
-                        <td>
-                          <span className={`erp-badge ${f.dias_mora > 30 ? "erp-badge-red" : f.dias_mora > 0 ? "erp-badge-yellow" : "erp-badge-green"}`}>
-                            {f.tramo}
-                          </span>
-                        </td>
-                        <td><strong style={{ fontSize: "1.05rem", color: "#dc2626" }}>{formatMoney(f.saldo_pendiente)}</strong></td>
-                      </tr>
-                    ))
+                    datosReporte.map((f, idx) => {
+                      const nombreCliente = f.cliente?.nombre || f.cliente_nombre || "Cliente sin registrar";
+                      const tipoCliente = f.cliente?.tipo || f.tipo_cliente || "general";
+                      const rutCliente = f.cliente?.rut || f.cliente_rut || "—";
+                      const folio = f.folio || (f.id_venta ? `F-${f.id_venta}` : `DOC-${idx + 1}`);
+                      const diasMora = Number(f.dias_mora || 0);
+
+                      return (
+                        <tr key={f.id_venta || f.folio || idx}>
+                          <td><strong>{folio}</strong></td>
+                          <td>
+                            <strong>{nombreCliente}</strong>
+                            <div style={{ fontSize: "0.8rem", color: "#666", textTransform: "capitalize" }}>{tipoCliente}</div>
+                          </td>
+                          <td>{rutCliente}</td>
+                          <td>{f.fecha_emision || f.fecha || "—"}</td>
+                          <td><strong>{f.fecha_vencimiento || "—"}</strong></td>
+                          <td>
+                            <strong style={{ color: diasMora > 0 ? "#dc2626" : "#27ae60" }}>
+                              {diasMora > 0 ? `${diasMora} días` : "Al día"}
+                            </strong>
+                          </td>
+                          <td>
+                            <span className={`erp-badge ${diasMora > 30 ? "erp-badge-red" : diasMora > 0 ? "erp-badge-yellow" : "erp-badge-green"}`}>
+                              {f.tramo || (diasMora > 0 ? `${diasMora} días mora` : "Vigente")}
+                            </span>
+                          </td>
+                          <td><strong style={{ fontSize: "1.05rem", color: "#dc2626" }}>{formatMoney(f.saldo_pendiente ?? f.total ?? 0)}</strong></td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
@@ -533,23 +550,23 @@ export default function ReportesVentasPage() {
                   ) : datosReporte.length === 0 ? (
                     <tr><td colSpan="9" style={{ textAlign: "center", padding: "2rem" }}>No hay datos para el criterio seleccionado.</td></tr>
                   ) : (
-                    datosReporte.map((r) => (
-                      <tr key={r.isbn}>
-                        <td><code>{r.isbn}</code></td>
-                        <td><strong>{r.titulo}</strong></td>
-                        <td>{r.categoria}</td>
-                        <td>{r.editorial}</td>
-                        <td><strong>{r.stock_actual} unid.</strong></td>
-                        <td><strong>{r.unidades_vendidas} unid.</strong></td>
-                        <td>{r.ultima_venta}</td>
+                    datosReporte.map((r, idx) => (
+                      <tr key={r.isbn || idx}>
+                        <td><code>{r.isbn || "—"}</code></td>
+                        <td><strong>{r.titulo || "Título desconocido"}</strong></td>
+                        <td>{r.categoria || "—"}</td>
+                        <td>{r.editorial || "—"}</td>
+                        <td><strong>{r.stock_actual ?? 0} unid.</strong></td>
+                        <td><strong>{r.unidades_vendidas ?? 0} unid.</strong></td>
+                        <td>{r.ultima_venta || "Sin ventas"}</td>
                         <td>
-                          <span style={{ color: r.dias_sin_vender > 90 ? "#dc2626" : "#666" }}>
-                            {r.dias_sin_vender >= 999 ? "Nunca vendido" : `${r.dias_sin_vender} días`}
+                          <span style={{ color: (r.dias_sin_vender || 0) > 90 ? "#dc2626" : "#666" }}>
+                            {(r.dias_sin_vender || 0) >= 999 ? "Nunca vendido" : `${r.dias_sin_vender || 0} días`}
                           </span>
                         </td>
                         <td>
                           <span className={`erp-badge ${r.clasificacion === "Alta rotación" ? "erp-badge-green" : r.clasificacion === "Rotación media" ? "erp-badge-blue" : "erp-badge-red"}`}>
-                            {r.clasificacion}
+                            {r.clasificacion || "Normal"}
                           </span>
                         </td>
                       </tr>
@@ -578,20 +595,21 @@ export default function ReportesVentasPage() {
                   ) : datosReporte.length === 0 ? (
                     <tr><td colSpan="6" style={{ textAlign: "center", padding: "2rem" }}>No hay operaciones registradas.</td></tr>
                   ) : (
-                    datosReporte.map((c) => (
-                      <tr key={c.canal}>
+                    datosReporte.map((c, idx) => (
+                      <tr key={c.canal || idx}>
                         <td>
                           <strong style={{ textTransform: "capitalize", fontSize: "1.05rem" }}>
                             {c.canal === "tienda fisica" && "🏢 Tienda Física (Casa Matriz Chillán)"}
                             {c.canal === "tienda digital" && "🌐 Tienda Digital (Online E-Commerce)"}
                             {c.canal === "retiro en tienda" && "📦 Retiro en Tienda (Click & Collect)"}
+                            {c.canal !== "tienda fisica" && c.canal !== "tienda digital" && c.canal !== "retiro en tienda" && (c.canal || "Canal General")}
                           </strong>
                         </td>
-                        <td><strong>{c.cantidad_operaciones} ventas</strong></td>
-                        <td>{formatMoney(c.total_neto)}</td>
-                        <td>{formatMoney(c.total_iva)}</td>
-                        <td><strong style={{ color: "#1a5c38", fontSize: "1.1rem" }}>{formatMoney(c.total_recaudado)}</strong></td>
-                        <td><strong>{formatMoney(c.ticket_promedio)}</strong></td>
+                        <td><strong>{c.cantidad_operaciones ?? 0} ventas</strong></td>
+                        <td>{formatMoney(c.total_neto ?? 0)}</td>
+                        <td>{formatMoney(c.total_iva ?? 0)}</td>
+                        <td><strong style={{ color: "#1a5c38", fontSize: "1.1rem" }}>{formatMoney(c.total_recaudado ?? 0)}</strong></td>
+                        <td><strong>{formatMoney(c.ticket_promedio ?? 0)}</strong></td>
                       </tr>
                     ))
                   )}

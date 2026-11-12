@@ -679,7 +679,7 @@ export default function VentasPage() {
               <div style={{ background: "#fcfbf7", padding: "1rem", borderRadius: "8px", border: "1px dashed #d5d0c2", textAlign: "left", fontSize: "0.9rem", lineHeight: "1.6" }}>
                 <div><strong>Folio:</strong> {comprobanteEmitido.folio}</div>
                 <div><strong>Fecha:</strong> {comprobanteEmitido.fecha}</div>
-                <div><strong>Cliente:</strong> {comprobanteEmitido.cliente.nombre} ({comprobanteEmitido.cliente.rut})</div>
+                <div><strong>Cliente:</strong> {comprobanteEmitido.cliente?.nombre || comprobanteEmitido.cliente_nombre || "Cliente General"} ({comprobanteEmitido.cliente?.rut || comprobanteEmitido.cliente_rut || "66.666.666-6"})</div>
                 <div><strong>Canal:</strong> {comprobanteEmitido.canal}</div>
                 <div><strong>Forma de Pago:</strong> {comprobanteEmitido.forma_pago}</div>
                 <div><strong>Asiento Contable:</strong> #{comprobanteEmitido.id_asiento}</div>

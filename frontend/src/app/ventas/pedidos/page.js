@@ -501,23 +501,23 @@ export default function PedidosYReservasPage() {
                         <td colSpan="9" style={{ textAlign: "center", padding: "2rem" }}>No hay reservas registradas.</td>
                       </tr>
                     ) : (
-                      reservas.map((r) => (
-                        <tr key={r.id_reserva}>
-                          <td><strong>#{r.id_reserva}</strong></td>
-                          <td>{r.fecha}</td>
+                      reservas.map((r, idx) => (
+                        <tr key={r.id_reserva || idx}>
+                          <td><strong>#{r.id_reserva || (idx + 1)}</strong></td>
+                          <td>{r.fecha || "—"}</td>
                           <td>
-                            <strong>{r.cliente.nombre}</strong>
-                            <div style={{ fontSize: "0.8rem", color: "#666" }}>{r.cliente.rut}</div>
+                            <strong>{r.cliente?.nombre || r.cliente_nombre || "Cliente"}</strong>
+                            <div style={{ fontSize: "0.8rem", color: "#666" }}>{r.cliente?.rut || r.cliente_rut || "—"}</div>
                           </td>
-                          <td>{r.cliente.telefono || "Sin teléfono"}</td>
+                          <td>{r.cliente?.telefono || r.cliente_telefono || "Sin teléfono"}</td>
                           <td>
-                            <strong>{r.libro.titulo}</strong>
-                            <div style={{ fontSize: "0.8rem", color: "#666" }}>ISBN: {r.libro.isbn} · {r.libro.autor}</div>
+                            <strong>{r.libro?.titulo || r.titulo || "Título desconocido"}</strong>
+                            <div style={{ fontSize: "0.8rem", color: "#666" }}>ISBN: {r.libro?.isbn || r.isbn || "—"} · {r.libro?.autor || r.autor || ""}</div>
                           </td>
-                          <td><strong>{r.cantidad}</strong></td>
+                          <td><strong>{r.cantidad ?? 1}</strong></td>
                           <td>
-                            <span style={{ fontWeight: "bold", color: r.libro.stock_actual > 0 ? "#27ae60" : "#c0392b" }}>
-                              {r.libro.stock_actual} disp.
+                            <span style={{ fontWeight: "bold", color: (r.libro?.stock_actual ?? r.stock_actual ?? 0) > 0 ? "#27ae60" : "#c0392b" }}>
+                              {r.libro?.stock_actual ?? r.stock_actual ?? 0} disp.
                             </span>
                           </td>
                           <td>
