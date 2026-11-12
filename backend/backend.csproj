@@ -202,6 +202,8 @@
     <Compile Include="Models\ReporteHistoricoDto.cs" />
     <Compile Include="Controllers\ReporteVariacionPreciosController.cs" />
     <Compile Include="Models\ReporteVariacionPreciosDto.cs" />
+    <Compile Include="Controllers\ReporteCuentasPorPagarController.cs" />
+    <Compile Include="Models\ReporteCuentasPorPagarDto.cs" />
     <Compile Include="Controllers\VentasController.cs" />
     <Compile Include="Controllers\ContabilidadController.cs" />
     <Compile Include="Controllers\DashboardController.cs" />

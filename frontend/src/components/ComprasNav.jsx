@@ -12,6 +12,7 @@ export default function ComprasNav() {
   const esConciliacion = pathname === "/compras/conciliacion";
   const esHistorico = pathname === "/compras/reportes/historico";
   const esVariacion = pathname === "/compras/reportes/variacion-precios";
+  const esCuentasPorPagar = pathname === "/compras/reportes/cuentas-por-pagar";
 
   return (
     <nav className="ventas-subnav" aria-label="Navegación de compras">
@@ -46,6 +47,14 @@ export default function ComprasNav() {
       >
         <ErpIcon name="calendar" />
         Conciliación y pagos
+      </Link>
+      <Link
+        href="/compras/reportes/cuentas-por-pagar"
+        className={`ventas-subnav-link ${esCuentasPorPagar ? "is-active" : ""}`}
+        aria-current={esCuentasPorPagar ? "page" : undefined}
+      >
+        <ErpIcon name="accounting" />
+        Cuentas por pagar
       </Link>
       <Link
         href="/compras/reportes/historico"
