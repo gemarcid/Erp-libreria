@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import ErpIcon from "@/components/ErpIcon";
 
 export default function InventarioNav({ activeTab }) {
   const pathname = usePathname();
@@ -10,72 +9,62 @@ export default function InventarioNav({ activeTab }) {
   const links = [
     {
       href: "/inventario",
-      label: "Catálogo de Existencias",
-      icon: "inventory",
+      label: "Existencias",
       key: "catalogo",
       exact: true,
     },
     {
       href: "/inventario/recepcion-compras",
-      label: "Recepción de Compras",
-      icon: "purchases",
+      label: "Recepción de compras",
       key: "recepcion-compras",
     },
     {
       href: "/inventario/transferencias",
-      label: "Transferencias entre Bodegas",
-      icon: "arrow",
+      label: "Transferencias",
       key: "transferencias",
     },
     {
       href: "/inventario/devoluciones",
-      label: "Mermas y Devoluciones",
-      icon: "logout",
+      label: "Devoluciones",
       key: "devoluciones",
     },
     {
       href: "/inventario/ajuste-stock",
-      label: "Ajuste de Stock",
-      icon: "settings",
+      label: "Ajuste de stock",
       key: "ajuste-stock",
     },
     {
       href: "/inventario?vista=critico",
-      label: "Reporte: Stock Bajo",
-      icon: "bell",
+      label: "Stock crítico",
       key: "stock-bajo",
     },
     {
       href: "/inventario/kardex",
-      label: "Reporte: Kardex de Movimientos",
-      icon: "trend",
+      label: "Kardex",
       key: "kardex",
     },
     {
       href: "/inventario/reportes/valorizacion",
-      label: "Reporte: Valorización Global",
-      icon: "accounting",
+      label: "Valorización",
       key: "valorizacion",
     },
     {
       href: "/inventario/reportes/rotacion",
-      label: "Reporte: Rotación y Antigüedad",
-      icon: "clock",
+      label: "Rotación",
       key: "rotacion",
     },
     {
       href: "/inventario/reportes/consolidado-bodegas",
-      label: "Reporte: Consolidado por Sucursal",
-      icon: "home",
+      label: "Consolidado por bodega",
       key: "consolidado-bodegas",
     },
   ];
 
   return (
     <nav
-      className="ventas-subnav"
+      className="module-tabs inventory-tabs"
       aria-label="Navegación del módulo de inventario"
-      style={{ overflowX: "auto", whiteSpace: "nowrap" }}
+      style={{ width: "100%", overflowX: "auto", flexWrap: "nowrap", marginBottom: 24 }}
     >
       {links.map((link) => {
         const isActive = activeTab
@@ -88,11 +77,21 @@ export default function InventarioNav({ activeTab }) {
           <Link
             key={link.href}
             href={link.href}
-            className={`ventas-subnav-link ${isActive ? "is-active" : ""}`}
+            className={`inventory-tab ${isActive ? "is-selected" : ""}`}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              flex: "0 0 auto",
+              borderBottom: `2px solid ${isActive ? "var(--color-primary)" : "transparent"}`,
+              color: isActive ? "var(--color-primary)" : "var(--color-text-muted)",
+              fontWeight: isActive ? 600 : 400,
+              padding: "13px 16px",
+              textDecoration: "none",
+              whiteSpace: "nowrap",
+            }}
             aria-current={isActive ? "page" : undefined}
           >
-            <ErpIcon name={link.icon} />
-            <span>{link.label}</span>
+            {link.label}
           </Link>
         );
       })}

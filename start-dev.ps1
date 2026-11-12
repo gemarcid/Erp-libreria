@@ -45,7 +45,8 @@ for ($attempt = 0; $attempt -lt 20; $attempt++) {
 if (-not $backendReady) { throw 'El backend no responde. Revisa backend/iisexpress-error.log.' }
 
 $env:ERP_BACKEND_URL = 'http://localhost:5000'
+$env:NODE_USE_SYSTEM_CA = '1'
 if (-not (Test-LocalPort 3000)) {
-    Start-Process -FilePath (Get-Command node.exe).Source -ArgumentList 'node_modules/next/dist/bin/next', 'dev', '--port', '3000' -WorkingDirectory $frontendDir -WindowStyle Hidden -RedirectStandardOutput (Join-Path $frontendDir 'dev.log') -RedirectStandardError (Join-Path $frontendDir 'dev-error.log')
+    Start-Process -FilePath (Get-Command node.exe).Source -ArgumentList '--use-system-ca', 'node_modules/next/dist/bin/next', 'dev', '--port', '3000' -WorkingDirectory $frontendDir -WindowStyle Hidden -RedirectStandardOutput (Join-Path $frontendDir 'dev.log') -RedirectStandardError (Join-Path $frontendDir 'dev-error.log')
 }
 Write-Host 'ERP disponible en http://localhost:3000. Backend: http://localhost:5000.'

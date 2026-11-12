@@ -1,46 +1,11 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import Link from "next/link";
 import ErpModuleShell from "@/components/ErpModuleShell";
+import InventarioNav from "@/components/InventarioNav";
 import ErpIcon from "@/components/ErpIcon";
 import { money } from "@/lib/dashboard";
 import { createCsv } from "@/lib/csv";
-
-/**
- * Barra de navegación superior integrada para el Módulo de Inventario (.ventas-subnav)
- */
-function InventarioNav({ activeTab }) {
-  const links = [
-    { href: "/inventario", label: "Catálogo de Existencias", icon: "inventory", key: "catalogo" },
-    { href: "/inventario/ajuste-stock", label: "Ajuste de Stock", icon: "settings", key: "ajuste-stock" },
-    { href: "/inventario?vista=critico", label: "Stock Bajo (Crítico)", icon: "bell", key: "stock-bajo" },
-    { href: "/inventario/kardex", label: "Kardex de Movimientos", icon: "trend", key: "kardex" },
-  ];
-
-  return (
-    <nav
-      className="ventas-subnav"
-      aria-label="Navegación del módulo de inventario"
-      style={{ overflowX: "auto", whiteSpace: "nowrap" }}
-    >
-      {links.map((link) => {
-        const isActive = activeTab === link.key;
-        return (
-          <Link
-            key={link.href}
-            href={link.href}
-            className={`ventas-subnav-link ${isActive ? "is-active" : ""}`}
-            aria-current={isActive ? "page" : undefined}
-          >
-            <ErpIcon name={link.icon} />
-            <span>{link.label}</span>
-          </Link>
-        );
-      })}
-    </nav>
-  );
-}
 
 const MOVIMIENTOS_KARDEX_INICIALES = [
   {
