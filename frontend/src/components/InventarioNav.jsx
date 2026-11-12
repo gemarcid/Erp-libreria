@@ -63,6 +63,12 @@ export default function InventarioNav({ activeTab }) {
       icon: "clock",
       key: "rotacion",
     },
+    {
+      href: "/inventario/reportes/consolidado-bodegas",
+      label: "Reporte: Consolidado por Sucursal",
+      icon: "home",
+      key: "consolidado-bodegas",
+    },
   ];
 
   return (
