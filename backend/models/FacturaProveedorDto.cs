@@ -153,5 +153,129 @@ namespace backend.Models
         [JsonProperty("estado_pago")]
         public string EstadoPagoSnake => EstadoPago;
     }
+
+    public class LineaConciliacionFacturaDto
+    {
+        public string Isbn { get; set; }
+        public string Titulo { get; set; }
+        public int CantidadPedida { get; set; }
+        public int CantidadRecibida { get; set; }
+        public int DiferenciaCantidad { get; set; }
+        public decimal PrecioPactado { get; set; }
+        public decimal IvaPorcentaje { get; set; }
+        public decimal SubtotalNetoEsperado { get; set; }
+        public decimal IvaEsperado { get; set; }
+        public decimal TotalEsperadoLinea { get; set; }
+
+        [JsonProperty("isbn")]
+        public string IsbnSnake => Isbn;
+
+        [JsonProperty("titulo")]
+        public string TituloSnake => Titulo;
+
+        [JsonProperty("cantidad_pedida")]
+        public int CantidadPedidaSnake => CantidadPedida;
+
+        [JsonProperty("cantidad_recibida")]
+        public int CantidadRecibidaSnake => CantidadRecibida;
+
+        [JsonProperty("diferencia_cantidad")]
+        public int DiferenciaCantidadSnake => DiferenciaCantidad;
+
+        [JsonProperty("precio_pactado")]
+        public decimal PrecioPactadoSnake => PrecioPactado;
+
+        [JsonProperty("iva_porcentaje")]
+        public decimal IvaPorcentajeSnake => IvaPorcentaje;
+
+        [JsonProperty("subtotal_neto_esperado")]
+        public decimal SubtotalNetoEsperadoSnake => SubtotalNetoEsperado;
+
+        [JsonProperty("iva_esperado")]
+        public decimal IvaEsperadoSnake => IvaEsperado;
+
+        [JsonProperty("total_esperado_linea")]
+        public decimal TotalEsperadoLineaSnake => TotalEsperadoLinea;
+    }
+
+    public class EvaluacionConciliacionFacturaDto
+    {
+        public FacturaProveedorDto Factura { get; set; }
+        public string EstadoOrden { get; set; }
+        public decimal NetoFactura { get; set; }
+        public decimal IvaFactura { get; set; }
+        public decimal TotalFactura { get; set; }
+        public decimal NetoEsperado { get; set; }
+        public decimal IvaEsperado { get; set; }
+        public decimal TotalEsperado { get; set; }
+        public decimal DiferenciaNeto { get; set; }
+        public decimal DiferenciaIva { get; set; }
+        public decimal DiferenciaTotal { get; set; }
+        public decimal ToleranciaRedondeo { get; set; } = 1.00m;
+        public bool HayDiferenciaCantidad { get; set; }
+        public bool HayDiferenciaMonto { get; set; }
+        public bool Cuadra { get; set; }
+        public string EstadoActualizado { get; set; }
+        public List<LineaConciliacionFacturaDto> Lineas { get; set; } = new List<LineaConciliacionFacturaDto>();
+
+        [JsonProperty("factura")]
+        public FacturaProveedorDto FacturaSnake => Factura;
+
+        [JsonProperty("estado_orden")]
+        public string EstadoOrdenSnake => EstadoOrden;
+
+        [JsonProperty("neto_factura")]
+        public decimal NetoFacturaSnake => NetoFactura;
+
+        [JsonProperty("iva_factura")]
+        public decimal IvaFacturaSnake => IvaFactura;
+
+        [JsonProperty("total_factura")]
+        public decimal TotalFacturaSnake => TotalFactura;
+
+        [JsonProperty("neto_esperado")]
+        public decimal NetoEsperadoSnake => NetoEsperado;
+
+        [JsonProperty("iva_esperado")]
+        public decimal IvaEsperadoSnake => IvaEsperado;
+
+        [JsonProperty("total_esperado")]
+        public decimal TotalEsperadoSnake => TotalEsperado;
+
+        [JsonProperty("diferencia_neto")]
+        public decimal DiferenciaNetoSnake => DiferenciaNeto;
+
+        [JsonProperty("diferencia_iva")]
+        public decimal DiferenciaIvaSnake => DiferenciaIva;
+
+        [JsonProperty("diferencia_total")]
+        public decimal DiferenciaTotalSnake => DiferenciaTotal;
+
+        [JsonProperty("tolerancia_redondeo")]
+        public decimal ToleranciaRedondeoSnake => ToleranciaRedondeo;
+
+        [JsonProperty("hay_diferencia_cantidad")]
+        public bool HayDiferenciaCantidadSnake => HayDiferenciaCantidad;
+
+        [JsonProperty("hay_diferencia_monto")]
+        public bool HayDiferenciaMontoSnake => HayDiferenciaMonto;
+
+        [JsonProperty("cuadra")]
+        public bool CuadraSnake => Cuadra;
+
+        [JsonProperty("estado_actualizado")]
+        public string EstadoActualizadoSnake => EstadoActualizado;
+
+        [JsonProperty("lineas")]
+        public List<LineaConciliacionFacturaDto> LineasSnake => Lineas;
+    }
+
+    public class ProgramarPagoFacturaRequestDto
+    {
+        public string FechaPago { get; set; }
+
+        [JsonProperty("fecha_pago")]
+        private string FechaPagoSnake { set { if (string.IsNullOrEmpty(FechaPago)) FechaPago = value; } }
+    }
 }
 

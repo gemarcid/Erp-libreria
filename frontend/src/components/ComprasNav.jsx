@@ -9,6 +9,7 @@ export default function ComprasNav() {
   const esOrdenes = pathname === "/compras";
   const esRecepciones = pathname === "/compras/recepciones";
   const esFacturas = pathname === "/compras/facturas";
+  const esConciliacion = pathname === "/compras/conciliacion";
   const esHistorico = pathname === "/compras/reportes/historico";
   const esVariacion = pathname === "/compras/reportes/variacion-precios";
 
@@ -37,6 +38,14 @@ export default function ComprasNav() {
       >
         <ErpIcon name="accounting" />
         Facturas de proveedor
+      </Link>
+      <Link
+        href="/compras/conciliacion"
+        className={`ventas-subnav-link ${esConciliacion ? "is-active" : ""}`}
+        aria-current={esConciliacion ? "page" : undefined}
+      >
+        <ErpIcon name="calendar" />
+        Conciliación y pagos
       </Link>
       <Link
         href="/compras/reportes/historico"

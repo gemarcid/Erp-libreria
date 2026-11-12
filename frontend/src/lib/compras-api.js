@@ -354,5 +354,59 @@ export async function registrarFacturaProveedor(datos) {
   };
 }
 
+export async function fetchFacturasPendientesConciliacion() {
+  const token = await obtenerToken();
+  const { response, result } = await requestVentasBackend("/api/facturas-proveedor/pendientes-conciliacion", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!response.ok) {
+    throw new Error(result.error || "No se pudieron obtener las facturas pendientes de conciliación.");
+  }
+
+  return Array.isArray(result) ? result : [];
+}
+
+export async function evaluarConciliacionFactura(idFactura) {
+  const token = await obtenerToken();
+  const { response, result } = await requestVentasBackend(`/api/facturas-proveedor/${idFactura}/evaluar`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!response.ok) {
+    throw new Error(result.error || "No se pudo evaluar la conciliación de la factura.");
+  }
+
+  return result;
+}
+
+export async function conciliarFacturaYProgramarPago(idFactura, fechaPago) {
+  const token = await obtenerToken();
+  const { response, result } = await requestVentasBackend(`/api/facturas-proveedor/${idFactura}/conciliar`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ fecha_pago: fechaPago }),
+  });
+
+  if (!response.ok) {
+    return {
+      ok: false,
+      status: response.status,
+      error: result.error || "No se pudo conciliar la factura ni programar el pago.",
+      evaluacion: result.evaluacion || null,
+    };
+  }
+
+  return {
+    ok: true,
+    status: response.status,
+    ...result,
+  };
+}
+
 
 

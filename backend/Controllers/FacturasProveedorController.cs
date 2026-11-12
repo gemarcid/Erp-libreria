@@ -390,6 +390,403 @@ namespace backend.Controllers
             }
         }
 
+        [HttpGet]
+        [Route("pendientes-conciliacion")]
+        public IHttpActionResult GetFacturasPendientesConciliacion()
+        {
+            HttpContext.Current.Response.Cache.SetNoStore();
+            var lista = new List<FacturaProveedorDto>();
+
+            try
+            {
+                using (var conn = DbConnectionFactory.CreateConnection())
+                {
+                    SessionAccess.RequireModule(new HttpRequestWrapper(HttpContext.Current.Request), conn, "compras", SecurityPolicy.Read);
+
+                    const string sql = @"
+                        SELECT fp.id_factura, fp.id_oc, oc.id_proveedor, p.razon_social,
+                               fp.nro_factura, fp.fecha_emision, fp.fecha_vencimiento, fp.fecha_pago,
+                               fp.monto_neto, fp.iva, fp.monto_total, fp.estado_pago
+                        FROM FACTURA_PROVEEDOR fp
+                        INNER JOIN ORDEN_COMPRA oc ON fp.id_oc = oc.id_oc
+                        INNER JOIN PROVEEDOR p ON oc.id_proveedor = p.id_proveedor
+                        WHERE fp.estado_pago IN ('pendiente de conciliacion', 'con discrepancias')
+                        ORDER BY fp.id_factura DESC";
+
+                    using (var cmd = new MySqlCommand(sql, conn))
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            lista.Add(MapFactura(reader));
+                        }
+                    }
+                }
+
+                return Ok(lista);
+            }
+            catch (HttpException ex)
+            {
+                return Content((HttpStatusCode)ex.GetHttpCode(), new { error = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Trace.TraceError("Error al listar facturas pendientes de conciliación: {0}", ex);
+                return Content(HttpStatusCode.ServiceUnavailable, new { error = "No se pudieron consultar las facturas pendientes de conciliación." });
+            }
+        }
+
+        [HttpGet]
+        [HttpPost]
+        [Route("{id:int}/evaluar")]
+        public IHttpActionResult EvaluarFactura(int id)
+        {
+            HttpContext.Current.Response.Cache.SetNoStore();
+
+            try
+            {
+                using (var conn = DbConnectionFactory.CreateConnection())
+                {
+                    int userId = SessionAccess.RequireModule(new HttpRequestWrapper(HttpContext.Current.Request), conn, "compras", SecurityPolicy.Edit);
+
+                    using (var trans = conn.BeginTransaction())
+                    {
+                        try
+                        {
+                            FacturaProveedorDto factura;
+                            string estadoOrden;
+
+                            const string lockSql = @"
+                                SELECT fp.id_factura, fp.id_oc, oc.id_proveedor, p.razon_social, oc.estado AS estado_orden,
+                                       fp.nro_factura, fp.fecha_emision, fp.fecha_vencimiento, fp.fecha_pago,
+                                       fp.monto_neto, fp.iva, fp.monto_total, fp.estado_pago
+                                FROM FACTURA_PROVEEDOR fp
+                                INNER JOIN ORDEN_COMPRA oc ON fp.id_oc = oc.id_oc
+                                INNER JOIN PROVEEDOR p ON oc.id_proveedor = p.id_proveedor
+                                WHERE fp.id_factura = @id
+                                FOR UPDATE";
+
+                            using (var cmdLock = new MySqlCommand(lockSql, conn, trans))
+                            {
+                                cmdLock.Parameters.AddWithValue("@id", id);
+                                using (var reader = cmdLock.ExecuteReader())
+                                {
+                                    if (!reader.Read())
+                                    {
+                                        trans.Rollback();
+                                        return Content(HttpStatusCode.NotFound, new { error = $"La factura #{id} no existe." });
+                                    }
+
+                                    factura = MapFactura(reader);
+                                    estadoOrden = reader["estado_orden"].ToString();
+                                }
+                            }
+
+                            if (factura.EstadoPago != "pendiente de conciliacion" && factura.EstadoPago != "con discrepancias")
+                            {
+                                trans.Rollback();
+                                return Content(HttpStatusCode.Conflict, new
+                                {
+                                    error = $"La factura #{id} no está disponible para conciliación (estado actual: '{factura.EstadoPago}'). Solo se pueden evaluar facturas en estado 'pendiente de conciliacion' o 'con discrepancias'."
+                                });
+                            }
+
+                            var evaluacion = CalcularEvaluacionConciliacion(conn, trans, factura, estadoOrden);
+
+                            if (!evaluacion.Cuadra && factura.EstadoPago != "con discrepancias")
+                            {
+                                const string updDiscSql = @"
+                                    UPDATE FACTURA_PROVEEDOR
+                                    SET estado_pago = 'con discrepancias'
+                                    WHERE id_factura = @id";
+
+                                using (var cmdUpd = new MySqlCommand(updDiscSql, conn, trans))
+                                {
+                                    cmdUpd.Parameters.AddWithValue("@id", id);
+                                    cmdUpd.ExecuteNonQuery();
+                                }
+
+                                factura.EstadoPago = "con discrepancias";
+                                evaluacion.EstadoActualizado = "con discrepancias";
+                                SecurityPolicy.Log(conn, trans, userId, "compras", "Evaluar conciliación factura con discrepancias", $"Factura #{id} ({factura.NroFactura})");
+                            }
+
+                            trans.Commit();
+                            return Ok(evaluacion);
+                        }
+                        catch
+                        {
+                            trans.Rollback();
+                            throw;
+                        }
+                    }
+                }
+            }
+            catch (HttpException ex)
+            {
+                return Content((HttpStatusCode)ex.GetHttpCode(), new { error = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Trace.TraceError("Error al evaluar conciliación de factura #{0}: {1}", id, ex);
+                return Content(HttpStatusCode.ServiceUnavailable, new { error = "No se pudo evaluar la conciliación de la factura." });
+            }
+        }
+
+        [HttpPost]
+        [Route("{id:int}/conciliar")]
+        public IHttpActionResult ConciliarFactura(int id, [FromBody] ProgramarPagoFacturaRequestDto dto)
+        {
+            HttpContext.Current.Response.Cache.SetNoStore();
+
+            try
+            {
+                using (var conn = DbConnectionFactory.CreateConnection())
+                {
+                    int userId = SessionAccess.RequireModule(new HttpRequestWrapper(HttpContext.Current.Request), conn, "compras", SecurityPolicy.Edit);
+
+                    using (var trans = conn.BeginTransaction())
+                    {
+                        try
+                        {
+                            // 1. Bloquear la factura con FOR UPDATE
+                            FacturaProveedorDto factura;
+                            string estadoOrden;
+                            DateTime fechaEmisionFactura;
+
+                            const string lockSql = @"
+                                SELECT fp.id_factura, fp.id_oc, oc.id_proveedor, p.razon_social, oc.estado AS estado_orden,
+                                       fp.nro_factura, fp.fecha_emision, fp.fecha_vencimiento, fp.fecha_pago,
+                                       fp.monto_neto, fp.iva, fp.monto_total, fp.estado_pago
+                                FROM FACTURA_PROVEEDOR fp
+                                INNER JOIN ORDEN_COMPRA oc ON fp.id_oc = oc.id_oc
+                                INNER JOIN PROVEEDOR p ON oc.id_proveedor = p.id_proveedor
+                                WHERE fp.id_factura = @id
+                                FOR UPDATE";
+
+                            using (var cmdLock = new MySqlCommand(lockSql, conn, trans))
+                            {
+                                cmdLock.Parameters.AddWithValue("@id", id);
+                                using (var reader = cmdLock.ExecuteReader())
+                                {
+                                    if (!reader.Read())
+                                    {
+                                        trans.Rollback();
+                                        return Content(HttpStatusCode.NotFound, new { error = $"La factura #{id} no existe." });
+                                    }
+
+                                    factura = MapFactura(reader);
+                                    estadoOrden = reader["estado_orden"].ToString();
+                                    fechaEmisionFactura = Convert.ToDateTime(reader["fecha_emision"]).Date;
+                                }
+                            }
+
+                            // 2. Solo se pueden conciliar facturas en 'pendiente de conciliacion' o 'con discrepancias'; en otro estado HTTP 409
+                            if (factura.EstadoPago != "pendiente de conciliacion" && factura.EstadoPago != "con discrepancias")
+                            {
+                                trans.Rollback();
+                                return Content(HttpStatusCode.Conflict, new
+                                {
+                                    error = $"No se puede conciliar la factura #{id} porque su estado actual es '{factura.EstadoPago}'. Solo se aceptan facturas en 'pendiente de conciliacion' o 'con discrepancias'."
+                                });
+                            }
+
+                            // 3. Validar fecha de pago (HTTP 400): obligatoria, no anterior a hoy ni a la fecha de emisión de la factura
+                            if (dto == null || string.IsNullOrWhiteSpace(dto.FechaPago) ||
+                                !DateTime.TryParseExact(dto.FechaPago.Trim(), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime fechaPago))
+                            {
+                                trans.Rollback();
+                                return Content(HttpStatusCode.BadRequest, new { error = "La fecha de pago programada es obligatoria y debe tener formato YYYY-MM-DD." });
+                            }
+
+                            if (fechaPago.Date < DateTime.Today)
+                            {
+                                trans.Rollback();
+                                return Content(HttpStatusCode.BadRequest, new { error = "La fecha de pago no puede ser anterior a hoy." });
+                            }
+
+                            if (fechaPago.Date < fechaEmisionFactura)
+                            {
+                                trans.Rollback();
+                                return Content(HttpStatusCode.BadRequest, new { error = "La fecha de pago no puede ser anterior a la fecha de emisión de la factura." });
+                            }
+
+                            // 4. Recalcular y verificar que la factura cuadre con lo recibido y pactado
+                            var evaluacion = CalcularEvaluacionConciliacion(conn, trans, factura, estadoOrden);
+
+                            if (!evaluacion.Cuadra)
+                            {
+                                const string updDiscSql = @"
+                                    UPDATE FACTURA_PROVEEDOR
+                                    SET estado_pago = 'con discrepancias'
+                                    WHERE id_factura = @id";
+
+                                using (var cmdDisc = new MySqlCommand(updDiscSql, conn, trans))
+                                {
+                                    cmdDisc.Parameters.AddWithValue("@id", id);
+                                    cmdDisc.ExecuteNonQuery();
+                                }
+
+                                factura.EstadoPago = "con discrepancias";
+                                evaluacion.EstadoActualizado = "con discrepancias";
+                                SecurityPolicy.Log(conn, trans, userId, "compras", "Conciliación rechazada por discrepancias", $"Factura #{id} ({factura.NroFactura})");
+                                trans.Commit();
+
+                                return Content(HttpStatusCode.Conflict, new
+                                {
+                                    error = "La factura presenta discrepancias frente a la orden y lo recibido; no se permite programar el pago.",
+                                    evaluacion
+                                });
+                            }
+
+                            // 5. Guardar fecha_pago y cambiar estado_pago a 'conciliada'
+                            const string updateSql = @"
+                                UPDATE FACTURA_PROVEEDOR
+                                SET fecha_pago = @fecha_pago,
+                                    estado_pago = 'conciliada'
+                                WHERE id_factura = @id";
+
+                            using (var cmdUpd = new MySqlCommand(updateSql, conn, trans))
+                            {
+                                cmdUpd.Parameters.AddWithValue("@fecha_pago", fechaPago.Date);
+                                cmdUpd.Parameters.AddWithValue("@id", id);
+                                cmdUpd.ExecuteNonQuery();
+                            }
+
+                            factura.FechaPago = fechaPago.ToString("yyyy-MM-dd");
+                            factura.EstadoPago = "conciliada";
+
+                            SecurityPolicy.Log(conn, trans, userId, "compras", "Conciliar factura y programar pago", $"Factura #{id} ({factura.NroFactura}) - Pago programado: {factura.FechaPago}");
+                            trans.Commit();
+
+                            return Ok(new
+                            {
+                                success = true,
+                                mensaje = $"Factura N° {factura.NroFactura} conciliada exitosamente. Pago programado para el {factura.FechaPago}.",
+                                factura
+                            });
+                        }
+                        catch
+                        {
+                            trans.Rollback();
+                            throw;
+                        }
+                    }
+                }
+            }
+            catch (HttpException ex)
+            {
+                return Content((HttpStatusCode)ex.GetHttpCode(), new { error = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Trace.TraceError("Error al conciliar factura #{0}: {1}", id, ex);
+                return Content(HttpStatusCode.ServiceUnavailable, new { error = "No se pudo conciliar la factura ni programar su pago." });
+            }
+        }
+
+        private static EvaluacionConciliacionFacturaDto CalcularEvaluacionConciliacion(
+            MySqlConnection conn,
+            MySqlTransaction trans,
+            FacturaProveedorDto factura,
+            string estadoOrden)
+        {
+            const decimal Tolerancia = 1.00m;
+
+            const string sqlLineas = @"
+                SELECT doc.isbn, l.titulo, doc.cantidad AS cantidad_pedida,
+                       doc.precio_pactado, doc.iva_porcentaje,
+                       COALESCE((
+                           SELECT SUM(m.cantidad)
+                           FROM MOVIMIENTO_STOCK m
+                           INNER JOIN RECEPCION r ON m.id_recepcion = r.id_recepcion
+                           WHERE r.id_oc = doc.id_oc AND m.isbn = doc.isbn
+                             AND m.tipo_movimiento = 'entrada' AND m.motivo = 'compra'
+                       ), 0) AS cantidad_recibida
+                FROM DETALLE_OC doc
+                INNER JOIN LIBRO l ON doc.isbn = l.isbn
+                WHERE doc.id_oc = @id_oc
+                ORDER BY l.titulo";
+
+            var lineas = new List<LineaConciliacionFacturaDto>();
+            decimal netoEsperado = 0m;
+            decimal ivaEsperado = 0m;
+            bool hayDiferenciaCantidad = false;
+
+            using (var cmd = new MySqlCommand(sqlLineas, conn, trans))
+            {
+                cmd.Parameters.AddWithValue("@id_oc", factura.IdOc);
+                using (var reader = cmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        int pedida = Convert.ToInt32(reader["cantidad_pedida"]);
+                        int recibida = Convert.ToInt32(reader["cantidad_recibida"]);
+                        decimal precioPactado = Convert.ToDecimal(reader["precio_pactado"]);
+                        decimal ivaPorc = Convert.ToDecimal(reader["iva_porcentaje"]);
+
+                        decimal subtotalNetoEsp = Math.Round(recibida * precioPactado, 2);
+                        decimal ivaEspLinea = Math.Round(subtotalNetoEsp * (ivaPorc / 100m), 2);
+                        decimal totalEspLinea = Math.Round(subtotalNetoEsp + ivaEspLinea, 2);
+                        int difCant = recibida - pedida;
+
+                        if (difCant != 0)
+                            hayDiferenciaCantidad = true;
+
+                        netoEsperado = Math.Round(netoEsperado + subtotalNetoEsp, 2);
+                        ivaEsperado = Math.Round(ivaEsperado + ivaEspLinea, 2);
+
+                        lineas.Add(new LineaConciliacionFacturaDto
+                        {
+                            Isbn = reader["isbn"].ToString(),
+                            Titulo = reader["titulo"].ToString(),
+                            CantidadPedida = pedida,
+                            CantidadRecibida = recibida,
+                            DiferenciaCantidad = difCant,
+                            PrecioPactado = precioPactado,
+                            IvaPorcentaje = ivaPorc,
+                            SubtotalNetoEsperado = subtotalNetoEsp,
+                            IvaEsperado = ivaEspLinea,
+                            TotalEsperadoLinea = totalEspLinea
+                        });
+                    }
+                }
+            }
+
+            decimal totalEsperado = Math.Round(netoEsperado + ivaEsperado, 2);
+            decimal difNeto = Math.Round(factura.MontoNeto - netoEsperado, 2);
+            decimal difIva = Math.Round(factura.Iva - ivaEsperado, 2);
+            decimal difTotal = Math.Round(factura.MontoTotal - totalEsperado, 2);
+
+            bool hayDiferenciaMonto =
+                Math.Abs(difNeto) > Tolerancia ||
+                Math.Abs(difIva) > Tolerancia ||
+                Math.Abs(difTotal) > Tolerancia;
+
+            bool cuadra = !hayDiferenciaMonto && !hayDiferenciaCantidad;
+
+            return new EvaluacionConciliacionFacturaDto
+            {
+                Factura = factura,
+                EstadoOrden = estadoOrden,
+                NetoFactura = factura.MontoNeto,
+                IvaFactura = factura.Iva,
+                TotalFactura = factura.MontoTotal,
+                NetoEsperado = netoEsperado,
+                IvaEsperado = ivaEsperado,
+                TotalEsperado = totalEsperado,
+                DiferenciaNeto = difNeto,
+                DiferenciaIva = difIva,
+                DiferenciaTotal = difTotal,
+                ToleranciaRedondeo = Tolerancia,
+                HayDiferenciaCantidad = hayDiferenciaCantidad,
+                HayDiferenciaMonto = hayDiferenciaMonto,
+                Cuadra = cuadra,
+                EstadoActualizado = cuadra ? factura.EstadoPago : "con discrepancias",
+                Lineas = lineas
+            };
+        }
+
         private static FacturaProveedorDto MapFactura(MySqlDataReader reader)
         {
             return new FacturaProveedorDto
