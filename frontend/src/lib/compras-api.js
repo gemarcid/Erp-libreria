@@ -18,9 +18,12 @@ async function obtenerToken() {
   return token;
 }
 
-export async function fetchProveedores(buscar = "") {
+export async function fetchProveedores(buscar = "", { soloActivos = false } = {}) {
   const token = await obtenerToken();
-  const query = buscar ? `?buscar=${encodeURIComponent(buscar.trim())}` : "";
+  const params = new URLSearchParams();
+  if (buscar && buscar.trim()) params.set("buscar", buscar.trim());
+  if (soloActivos) params.set("soloActivos", "true");
+  const query = params.toString() ? `?${params.toString()}` : "";
   const { response, result } = await requestVentasBackend(`/api/proveedores${query}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
@@ -30,6 +33,10 @@ export async function fetchProveedores(buscar = "") {
   }
 
   return Array.isArray(result) ? result : [];
+}
+
+export async function fetchProveedoresActivos(buscar = "") {
+  return fetchProveedores(buscar, { soloActivos: true });
 }
 
 export async function fetchProveedorPorId(id) {
@@ -129,6 +136,12 @@ export async function crearOrdenCompra(datos) {
   }
 
   return result;
+}
+
+// Punto de llamada preparado para la siguiente instrucción (envío de la orden al proveedor)
+export async function enviarOrdenCompraProveedor(idOc) {
+  await obtenerToken();
+  return { idOc, pendienteImplementacionEnvio: true };
 }
 
 export async function aprobarOrdenCompra(id) {

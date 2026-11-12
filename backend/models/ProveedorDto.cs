@@ -8,7 +8,9 @@ namespace backend.Models
         public string Rut { get; set; }
         public string RazonSocial { get; set; }
         public string Contacto { get; set; }
+        public string Correo { get; set; }
         public string CondicionPago { get; set; }
+        public bool Activo { get; set; } = true;
 
         [JsonProperty("id_proveedor")]
         public int? IdProveedorSnake

@@ -15,7 +15,7 @@ namespace backend.Controllers
     {
         [HttpGet]
         [Route("")]
-        public IHttpActionResult GetAll([FromUri] string buscar = null)
+        public IHttpActionResult GetAll([FromUri] string buscar = null, [FromUri] bool soloActivos = false)
         {
             HttpContext.Current.Response.Cache.SetNoStore();
             var proveedores = new List<ProveedorDto>();
@@ -26,12 +26,18 @@ namespace backend.Controllers
                     SessionAccess.RequireModule(new HttpRequestWrapper(HttpContext.Current.Request), conn, "compras", SecurityPolicy.Read);
 
                     string sql = @"
-                        SELECT id_proveedor, rut, razon_social, contacto, condicion_pago
-                        FROM PROVEEDOR";
+                        SELECT id_proveedor, rut, razon_social, contacto, correo, condicion_pago, activo
+                        FROM PROVEEDOR
+                        WHERE 1=1";
+
+                    if (soloActivos)
+                    {
+                        sql += " AND activo = TRUE";
+                    }
 
                     if (!string.IsNullOrWhiteSpace(buscar))
                     {
-                        sql += " WHERE rut LIKE @buscar OR razon_social LIKE @buscar";
+                        sql += " AND (rut LIKE @buscar OR razon_social LIKE @buscar)";
                     }
 
                     sql += " ORDER BY razon_social, rut";
@@ -53,7 +59,9 @@ namespace backend.Controllers
                                     Rut = reader["rut"].ToString(),
                                     RazonSocial = reader["razon_social"].ToString(),
                                     Contacto = reader["contacto"] != DBNull.Value ? reader["contacto"].ToString() : null,
-                                    CondicionPago = reader["condicion_pago"] != DBNull.Value ? reader["condicion_pago"].ToString() : null
+                                    Correo = reader["correo"] != DBNull.Value ? reader["correo"].ToString() : null,
+                                    CondicionPago = reader["condicion_pago"] != DBNull.Value ? reader["condicion_pago"].ToString() : null,
+                                    Activo = reader["activo"] == DBNull.Value || Convert.ToBoolean(reader["activo"])
                                 });
                             }
                         }
@@ -84,7 +92,7 @@ namespace backend.Controllers
                     SessionAccess.RequireModule(new HttpRequestWrapper(HttpContext.Current.Request), conn, "compras", SecurityPolicy.Read);
 
                     const string sql = @"
-                        SELECT id_proveedor, rut, razon_social, contacto, condicion_pago
+                        SELECT id_proveedor, rut, razon_social, contacto, correo, condicion_pago, activo
                         FROM PROVEEDOR
                         WHERE id_proveedor = @id
                         LIMIT 1";
@@ -105,7 +113,9 @@ namespace backend.Controllers
                                 Rut = reader["rut"].ToString(),
                                 RazonSocial = reader["razon_social"].ToString(),
                                 Contacto = reader["contacto"] != DBNull.Value ? reader["contacto"].ToString() : null,
-                                CondicionPago = reader["condicion_pago"] != DBNull.Value ? reader["condicion_pago"].ToString() : null
+                                Correo = reader["correo"] != DBNull.Value ? reader["correo"].ToString() : null,
+                                CondicionPago = reader["condicion_pago"] != DBNull.Value ? reader["condicion_pago"].ToString() : null,
+                                Activo = reader["activo"] == DBNull.Value || Convert.ToBoolean(reader["activo"])
                             };
                             return Ok(proveedor);
                         }

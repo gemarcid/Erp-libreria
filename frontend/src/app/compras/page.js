@@ -9,9 +9,11 @@ import ComprasNav from "@/components/ComprasNav";
 import ErpIcon from "@/components/ErpIcon";
 import {
   fetchProveedores,
+  fetchProveedoresActivos,
   fetchOrdenesCompra,
   fetchOrdenCompraPorId,
   crearOrdenCompra,
+  enviarOrdenCompraProveedor,
   aprobarOrdenCompra,
   rechazarOrdenCompra,
   fetchLibrosParaCompra,
@@ -33,6 +35,17 @@ function hoyISO() {
   return `${year}-${month}-${day}`;
 }
 
+function crearLineaVacia() {
+  return {
+    isbn: "",
+    titulo: "",
+    cantidad: 1,
+    precioPactado: 0,
+    ivaPorcentaje: 19,
+    costoBase: 0,
+  };
+}
+
 export default function OrdenesCompraPage() {
   const { usuario, loading: authLoading, error: authError } = useAuth();
   const router = useRouter();
@@ -40,9 +53,11 @@ export default function OrdenesCompraPage() {
   // Estados principales
   const [ordenes, setOrdenes] = useState([]);
   const [proveedores, setProveedores] = useState([]);
+  const [proveedoresActivos, setProveedoresActivos] = useState([]);
   const [catalogoLibros, setCatalogoLibros] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [errorGeneral, setErrorGeneral] = useState("");
+  const [mensajeConfirmacion, setMensajeConfirmacion] = useState("");
 
   // Filtros
   const [filtroEstado, setFiltroEstado] = useState("");
@@ -58,12 +73,16 @@ export default function OrdenesCompraPage() {
   // Modal Nueva Orden
   const [modalNuevoAbierto, setModalNuevoAbierto] = useState(false);
   const [formProveedorId, setFormProveedorId] = useState("");
+  const [formFechaEmision, setFormFechaEmision] = useState(hoyISO());
   const [formFechaEntrega, setFormFechaEntrega] = useState("");
-  const [lineas, setLineas] = useState([
-    { isbn: "", cantidad: 1, precioPactado: 0, titulo: "", costoBase: 0 },
-  ]);
+  const [lineas, setLineas] = useState([crearLineaVacia()]);
   const [guardando, setGuardando] = useState(false);
   const [formError, setFormError] = useState("");
+  const [erroresCampos, setErroresCampos] = useState({
+    proveedor: "",
+    fechaEntrega: "",
+    lineas: {},
+  });
 
   // Redirección si no hay sesión
   useEffect(() => {
@@ -72,25 +91,30 @@ export default function OrdenesCompraPage() {
     }
   }, [authLoading, usuario, authError, router]);
 
-  // Cargar datos auxiliares (proveedores y catálogo)
-  useEffect(() => {
+  // Cargar datos auxiliares desde la base de datos (proveedores, proveedores activos y catálogo de libros)
+  const cargarAuxiliares = useCallback(async () => {
     if (!usuario) return;
-    async function cargarAuxiliares() {
-      try {
-        const [provs, libros] = await Promise.all([
-          fetchProveedores(),
-          fetchLibrosParaCompra(),
-        ]);
-        setProveedores(provs);
-        setCatalogoLibros(libros);
-      } catch (err) {
-        console.error("Error al cargar datos auxiliares:", err);
-      }
+    try {
+      const [todosProvs, provsActivos, libros] = await Promise.all([
+        fetchProveedores(),
+        fetchProveedoresActivos(),
+        fetchLibrosParaCompra(),
+      ]);
+      setProveedores(todosProvs);
+      setProveedoresActivos(
+        provsActivos.filter((p) => p.activo !== false)
+      );
+      setCatalogoLibros(libros);
+    } catch (err) {
+      console.error("Error al cargar datos auxiliares:", err);
     }
-    cargarAuxiliares();
   }, [usuario]);
 
-  // Cargar lista de órdenes con filtros
+  useEffect(() => {
+    cargarAuxiliares();
+  }, [cargarAuxiliares]);
+
+  // Cargar lista de órdenes con filtros desde la base de datos
   const cargarOrdenes = useCallback(async () => {
     setCargando(true);
     setErrorGeneral("");
@@ -183,32 +207,52 @@ export default function OrdenesCompraPage() {
   }
 
   // Manejo de formulario nueva orden
-  function abrirNuevaOrden() {
+  async function abrirNuevaOrden() {
+    const hoy = hoyISO();
     setFormProveedorId("");
-    setFormFechaEntrega(hoyISO());
-    setLineas([
-      { isbn: "", cantidad: 1, precioPactado: 0, titulo: "", costoBase: 0 },
-    ]);
+    setFormFechaEmision(hoy);
+    setFormFechaEntrega(hoy);
+    setLineas([crearLineaVacia()]);
     setFormError("");
+    setErroresCampos({ proveedor: "", fechaEntrega: "", lineas: {} });
     setModalNuevoAbierto(true);
+    await cargarAuxiliares();
   }
 
   function cerrarNuevaOrden() {
     if (guardando) return;
     setModalNuevoAbierto(false);
     setFormError("");
+    setErroresCampos({ proveedor: "", fechaEntrega: "", lineas: {} });
+  }
+
+  function limpiarErrorLinea(index, campo) {
+    setErroresCampos((prev) => {
+      if (!prev.lineas || !prev.lineas[index] || !prev.lineas[index][campo]) {
+        return prev;
+      }
+      const nuevasLineas = { ...prev.lineas };
+      nuevasLineas[index] = { ...nuevasLineas[index], [campo]: "" };
+      return { ...prev, lineas: nuevasLineas };
+    });
   }
 
   function agregarLinea() {
-    setLineas((prev) => [
-      ...prev,
-      { isbn: "", cantidad: 1, precioPactado: 0, titulo: "", costoBase: 0 },
-    ]);
+    setLineas((prev) => [...prev, crearLineaVacia()]);
   }
 
   function quitarLinea(index) {
     if (lineas.length <= 1) return;
     setLineas((prev) => prev.filter((_, i) => i !== index));
+    setErroresCampos((prev) => {
+      const nuevasLineas = {};
+      Object.entries(prev.lineas || {}).forEach(([k, val]) => {
+        const idx = Number(k);
+        if (idx < index) nuevasLineas[idx] = val;
+        else if (idx > index) nuevasLineas[idx - 1] = val;
+      });
+      return { ...prev, lineas: nuevasLineas };
+    });
   }
 
   function cambiarLibroEnLinea(index, isbn) {
@@ -224,101 +268,208 @@ export default function OrdenesCompraPage() {
       };
       return copy;
     });
+    limpiarErrorLinea(index, "isbn");
+    limpiarErrorLinea(index, "precioPactado");
   }
 
   function cambiarCantidadEnLinea(index, valor) {
-    const cantidad = Math.max(1, parseInt(valor, 10) || 1);
     setLineas((prev) => {
       const copy = [...prev];
-      copy[index] = { ...copy[index], cantidad };
+      copy[index] = { ...copy[index], cantidad: valor };
       return copy;
     });
+    limpiarErrorLinea(index, "cantidad");
   }
 
   function cambiarPrecioEnLinea(index, valor) {
-    const precioPactado = Math.max(0, parseFloat(valor) || 0);
     setLineas((prev) => {
       const copy = [...prev];
-      copy[index] = { ...copy[index], precioPactado };
+      copy[index] = { ...copy[index], precioPactado: valor };
       return copy;
     });
+    limpiarErrorLinea(index, "precioPactado");
   }
 
-  // Cálculos en vivo para nueva orden
+  function cambiarIvaEnLinea(index, valor) {
+    setLineas((prev) => {
+      const copy = [...prev];
+      copy[index] = { ...copy[index], ivaPorcentaje: valor };
+      return copy;
+    });
+    limpiarErrorLinea(index, "ivaPorcentaje");
+  }
+
+  // Cálculos en tiempo real para nueva orden (Neto, IVA y Total)
   const { totalNeto, totalIva, totalFinal } = useMemo(() => {
     let neto = 0;
+    let ivaExacto = 0;
     lineas.forEach((l) => {
-      if (l.isbn && l.cantidad > 0 && l.precioPactado > 0) {
-        neto += l.cantidad * l.precioPactado;
+      const cant = Number(l.cantidad);
+      const precio = Number(l.precioPactado);
+      const ivaPct = l.ivaPorcentaje === "" ? 0 : Number(l.ivaPorcentaje);
+      if (l.isbn && Number.isFinite(cant) && cant > 0 && Number.isFinite(precio) && precio > 0) {
+        const subtotalLinea = Math.round(cant * precio);
+        neto += subtotalLinea;
+        if (Number.isFinite(ivaPct) && ivaPct >= 0) {
+          ivaExacto += subtotalLinea * (ivaPct / 100);
+        }
       }
     });
-    const iva = Math.round(neto * 0.19);
+    const iva = Math.round(ivaExacto);
     const final = neto + iva;
     return { totalNeto: neto, totalIva: iva, totalFinal: final };
   }, [lineas]);
 
+  // Validación integral en pantalla resaltando cada campo con error
+  function validarFormularioOrden() {
+    const hoy = hoyISO();
+    const nuevosErrores = {
+      proveedor: "",
+      fechaEntrega: "",
+      lineas: {},
+    };
+    const mensajes = [];
+
+    // 1. Validar proveedor obligatorio y activo en catálogo
+    if (!formProveedorId) {
+      nuevosErrores.proveedor = "Selecciona un proveedor activo del catálogo.";
+      mensajes.push("Debes seleccionar un proveedor.");
+    } else {
+      const provEncontrado = proveedoresActivos.find(
+        (p) => String(p.idProveedor ?? p.id_proveedor) === String(formProveedorId)
+      );
+      if (!provEncontrado || provEncontrado.activo === false) {
+        nuevosErrores.proveedor = "El proveedor seleccionado no existe o está inactivo.";
+        mensajes.push("El proveedor seleccionado está inactivo o no es válido.");
+      }
+    }
+
+    // 2. Validar fecha de entrega obligatoria y >= fecha actual
+    if (!formFechaEntrega) {
+      nuevosErrores.fechaEntrega = "La fecha de entrega es obligatoria.";
+      mensajes.push("Debes indicar la fecha de entrega.");
+    } else if (formFechaEntrega < hoy) {
+      nuevosErrores.fechaEntrega = `No puede ser anterior a hoy (${hoy}).`;
+      mensajes.push("La fecha de entrega no puede ser anterior a la fecha actual.");
+    }
+
+    // 3. Validar líneas de productos
+    if (!lineas || lineas.length === 0) {
+      mensajes.push("Debes agregar al menos una línea de producto.");
+    } else {
+      const isbnsVistos = new Map();
+
+      lineas.forEach((l, idx) => {
+        const errLinea = {};
+        const numFila = idx + 1;
+
+        if (!l.isbn || !String(l.isbn).trim()) {
+          errLinea.isbn = "Selecciona un producto del catálogo.";
+          mensajes.push(`Línea #${numFila}: falta seleccionar el producto.`);
+        } else {
+          const isbnNorm = String(l.isbn).trim();
+          if (isbnsVistos.has(isbnNorm)) {
+            errLinea.isbn = "Producto repetido en la orden.";
+            const filaPrevia = isbnsVistos.get(isbnNorm);
+            mensajes.push(
+              `Línea #${numFila}: el producto "${l.titulo || isbnNorm}" ya está en la línea #${filaPrevia}.`
+            );
+          } else {
+            isbnsVistos.set(isbnNorm, numFila);
+          }
+        }
+
+        const cantNum = Number(l.cantidad);
+        if (
+          l.cantidad === "" ||
+          l.cantidad === null ||
+          !Number.isFinite(cantNum) ||
+          !Number.isInteger(cantNum) ||
+          cantNum <= 0
+        ) {
+          errLinea.cantidad = "Debe ser entero > 0.";
+          mensajes.push(`Línea #${numFila}: la cantidad debe ser un número entero mayor a 0.`);
+        }
+
+        const precioNum = Number(l.precioPactado);
+        if (
+          l.precioPactado === "" ||
+          l.precioPactado === null ||
+          !Number.isFinite(precioNum) ||
+          precioNum <= 0
+        ) {
+          errLinea.precioPactado = "Debe ser mayor a 0.";
+          mensajes.push(`Línea #${numFila}: el precio pactado unitario debe ser mayor a 0.`);
+        }
+
+        const ivaNum = Number(l.ivaPorcentaje);
+        if (
+          l.ivaPorcentaje === "" ||
+          l.ivaPorcentaje === null ||
+          !Number.isFinite(ivaNum) ||
+          ivaNum < 0 ||
+          ivaNum > 100
+        ) {
+          errLinea.ivaPorcentaje = "IVA entre 0% y 100%.";
+          mensajes.push(`Línea #${numFila}: el porcentaje de IVA debe estar entre 0 y 100.`);
+        }
+
+        if (Object.keys(errLinea).length > 0) {
+          nuevosErrores.lineas[idx] = errLinea;
+        }
+      });
+    }
+
+    setErroresCampos(nuevosErrores);
+
+    if (mensajes.length > 0) {
+      setFormError(`Corrige los campos marcados en rojo: ${mensajes.join(" ")}`);
+      return false;
+    }
+
+    setFormError("");
+    return true;
+  }
+
   // Guardar nueva orden
   async function handleGuardarOrden(event) {
     event.preventDefault();
-    setFormError("");
+    setMensajeConfirmacion("");
 
-    if (!formProveedorId) {
-      setFormError("Debes seleccionar un proveedor.");
+    if (!validarFormularioOrden()) {
       return;
-    }
-
-    if (!formFechaEntrega) {
-      setFormError("La fecha estimada de entrega es obligatoria.");
-      return;
-    }
-
-    if (formFechaEntrega < hoyISO()) {
-      setFormError("La fecha de entrega no puede ser anterior a la fecha de hoy.");
-      return;
-    }
-
-    if (lineas.length === 0) {
-      setFormError("Debes incluir al menos un libro en la orden.");
-      return;
-    }
-
-    const isbns = new Set();
-    for (let i = 0; i < lineas.length; i++) {
-      const l = lineas[i];
-      if (!l.isbn) {
-        setFormError(`La línea #${i + 1} no tiene ningún libro seleccionado.`);
-        return;
-      }
-      if (isbns.has(l.isbn)) {
-        setFormError(`El libro "${l.titulo || l.isbn}" está repetido en la orden. Ajusta la cantidad en una sola línea.`);
-        return;
-      }
-      isbns.add(l.isbn);
-
-      if (l.cantidad <= 0 || !Number.isInteger(Number(l.cantidad))) {
-        setFormError(`La cantidad para "${l.titulo || l.isbn}" debe ser un número entero mayor a 0.`);
-        return;
-      }
-      if (l.precioPactado <= 0) {
-        setFormError(`El precio pactado para "${l.titulo || l.isbn}" debe ser mayor a 0.`);
-        return;
-      }
     }
 
     setGuardando(true);
     try {
-      await crearOrdenCompra({
+      const creada = await crearOrdenCompra({
         idProveedor: parseInt(formProveedorId, 10),
         fechaEntrega: formFechaEntrega,
         lineas: lineas.map((l) => ({
-          isbn: l.isbn,
+          isbn: String(l.isbn).trim(),
           cantidad: parseInt(l.cantidad, 10),
           precioPactado: parseFloat(l.precioPactado),
+          ivaPorcentaje: parseFloat(l.ivaPorcentaje),
         })),
       });
 
+      const idNuevaOc = creada.idOc ?? creada.id_oc;
+
+      // Punto de llamada preparado para el envío al proveedor (se implementa en la siguiente instrucción)
+      await enviarOrdenCompraProveedor(idNuevaOc);
+
       setModalNuevoAbierto(false);
+      setFiltroEstado("");
+      setFiltroProveedor("");
+      setFiltroNumero("");
       await cargarOrdenes();
+
+      setMensajeConfirmacion(
+        creada.mensaje ||
+          `Orden de compra #${idNuevaOc} generada exitosamente en estado pendiente por un total de ${formatMoney(
+            creada.total
+          )}.`
+      );
     } catch (err) {
       setFormError(err.message || "Error al crear la orden de compra.");
     } finally {
@@ -330,19 +481,37 @@ export default function OrdenesCompraPage() {
   const puedeAprobar = nivelCompras === 3;
   const puedeCrear = nivelCompras >= 2;
 
+  function obtenerEtiquetaEstado(oc) {
+    if (!oc) return "";
+    const estado = (oc.estado || "").toLowerCase();
+    const fechaEnvio = oc.fechaEnvio ?? oc.fecha_envio ?? null;
+    const intentosEnvio = Number(oc.intentosEnvio ?? oc.intentos_envio ?? 0);
+    if (estado === "pendiente" && !fechaEnvio && intentosEnvio > 0) {
+      return "pendiente de envío";
+    }
+    return oc.estado;
+  }
+
   function getBadgeClass(estado) {
     switch (estado?.toLowerCase()) {
       case "aprobada":
         return "success";
       case "recibida":
+      case "recibida parcial":
         return "neutral";
       case "rechazada":
         return "danger";
+      case "pendiente de envío":
       case "pendiente":
       default:
         return "warning";
     }
   }
+
+  const inputErrorStyle = {
+    border: "2px solid #c62828",
+    backgroundColor: "#fff5f5",
+  };
 
   return (
     <ErpModuleShell
@@ -388,6 +557,41 @@ export default function OrdenesCompraPage() {
           <p className="ventas-message ventas-message-error" role="alert">
             {errorGeneral}
           </p>
+        )}
+
+        {mensajeConfirmacion && (
+          <div
+            role="status"
+            style={{
+              padding: "12px 16px",
+              borderRadius: "8px",
+              backgroundColor: "#e8f5e9",
+              border: "1px solid #81c784",
+              color: "#1b5e20",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              fontSize: "13px",
+              fontWeight: "600",
+            }}
+          >
+            <span>✓ {mensajeConfirmacion}</span>
+            <button
+              type="button"
+              onClick={() => setMensajeConfirmacion("")}
+              style={{
+                background: "none",
+                border: "none",
+                color: "#1b5e20",
+                cursor: "pointer",
+                fontWeight: "bold",
+                fontSize: "15px",
+              }}
+              aria-label="Cerrar mensaje de confirmación"
+            >
+              ✕
+            </button>
+          </div>
         )}
 
         {/* Panel de Filtros */}
@@ -467,6 +671,7 @@ export default function OrdenesCompraPage() {
               <option value="">Todos los estados</option>
               <option value="pendiente">Pendiente</option>
               <option value="aprobada">Aprobada</option>
+              <option value="recibida parcial">Recibida parcial</option>
               <option value="recibida">Recibida</option>
               <option value="rechazada">Rechazada</option>
             </select>
@@ -491,7 +696,7 @@ export default function OrdenesCompraPage() {
                       <th scope="col" style={{ width: "120px", textAlign: "left" }}>Emisión</th>
                       <th scope="col" style={{ width: "120px", textAlign: "left" }}>Entrega</th>
                       <th scope="col" style={{ width: "130px", textAlign: "right" }}>Total</th>
-                      <th scope="col" style={{ width: "120px", textAlign: "center" }}>Estado</th>
+                      <th scope="col" style={{ width: "140px", textAlign: "center" }}>Estado</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -499,6 +704,7 @@ export default function OrdenesCompraPage() {
                       const id = oc.idOc || oc.id_oc;
                       const provNombre = oc.proveedorNombre || oc.razon_social;
                       const entrega = oc.fechaEntrega || oc.fecha_entrega;
+                      const etiquetaEstado = obtenerEtiquetaEstado(oc);
 
                       return (
                         <tr
@@ -521,8 +727,8 @@ export default function OrdenesCompraPage() {
                             {formatMoney(oc.total)}
                           </td>
                           <td style={{ textAlign: "center" }}>
-                            <span className={`erp-status ${getBadgeClass(oc.estado)}`}>
-                              {oc.estado}
+                            <span className={`erp-status ${getBadgeClass(etiquetaEstado)}`}>
+                              {etiquetaEstado}
                             </span>
                           </td>
                         </tr>
@@ -564,7 +770,7 @@ export default function OrdenesCompraPage() {
               className="erp-card"
               style={{
                 width: "100%",
-                maxWidth: "700px",
+                maxWidth: "740px",
                 padding: "28px",
                 borderRadius: "12px",
                 backgroundColor: "var(--color-surface-card)",
@@ -590,8 +796,8 @@ export default function OrdenesCompraPage() {
                     Orden de Compra #{ordenSeleccionada.idOc || ordenSeleccionada.id_oc}
                   </h2>
                   <div style={{ marginTop: "6px" }}>
-                    <span className={`erp-status ${getBadgeClass(ordenSeleccionada.estado)}`}>
-                      {ordenSeleccionada.estado}
+                    <span className={`erp-status ${getBadgeClass(obtenerEtiquetaEstado(ordenSeleccionada))}`}>
+                      {obtenerEtiquetaEstado(ordenSeleccionada)}
                     </span>
                   </div>
                 </div>
@@ -661,9 +867,10 @@ export default function OrdenesCompraPage() {
                         <tr>
                           <th scope="col" style={{ textAlign: "left" }}>Libro / Título</th>
                           <th scope="col" style={{ width: "120px", textAlign: "left" }}>ISBN</th>
-                          <th scope="col" style={{ width: "70px", textAlign: "right" }}>Cant.</th>
-                          <th scope="col" style={{ width: "110px", textAlign: "right" }}>Precio P.</th>
-                          <th scope="col" style={{ width: "120px", textAlign: "right" }}>Subtotal</th>
+                          <th scope="col" style={{ width: "65px", textAlign: "right" }}>Cant.</th>
+                          <th scope="col" style={{ width: "105px", textAlign: "right" }}>Precio P.</th>
+                          <th scope="col" style={{ width: "70px", textAlign: "right" }}>IVA %</th>
+                          <th scope="col" style={{ width: "115px", textAlign: "right" }}>Subtotal</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -673,6 +880,7 @@ export default function OrdenesCompraPage() {
                             <td style={{ fontFamily: "monospace", fontSize: "12px" }}>{linea.isbn}</td>
                             <td style={{ textAlign: "right" }}>{linea.cantidad}</td>
                             <td style={{ textAlign: "right" }}>{formatMoney(linea.precioPactado)}</td>
+                            <td style={{ textAlign: "right" }}>{Number(linea.ivaPorcentaje ?? 19)}%</td>
                             <td style={{ textAlign: "right", fontWeight: "600" }}>{formatMoney(linea.subtotal)}</td>
                           </tr>
                         ))}
@@ -697,7 +905,7 @@ export default function OrdenesCompraPage() {
                       <span>{formatMoney(ordenSeleccionada.neto)}</span>
                     </div>
                     <div style={{ display: "flex", width: "220px", justifyContent: "space-between" }}>
-                      <span style={{ color: "var(--color-text-muted)" }}>IVA (19%):</span>
+                      <span style={{ color: "var(--color-text-muted)" }}>IVA:</span>
                       <span>{formatMoney(ordenSeleccionada.iva)}</span>
                     </div>
                     <div
@@ -812,7 +1020,7 @@ export default function OrdenesCompraPage() {
               className="erp-card"
               style={{
                 width: "100%",
-                maxWidth: "850px",
+                maxWidth: "960px",
                 padding: "28px",
                 borderRadius: "12px",
                 backgroundColor: "var(--color-surface-card)",
@@ -859,16 +1067,17 @@ export default function OrdenesCompraPage() {
                 </p>
               )}
 
-              <form onSubmit={handleGuardarOrden}>
-                {/* Cabecera de la orden */}
+              <form onSubmit={handleGuardarOrden} noValidate>
+                {/* Cabecera de la orden: Proveedor, Fecha de emisión (solo lectura), Fecha de entrega */}
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
+                    gridTemplateColumns: "2fr 1fr 1fr",
                     gap: "16px",
                     marginBottom: "24px",
                   }}
                 >
+                  {/* 1. Proveedor (solo activos del catálogo) */}
                   <div>
                     <label
                       htmlFor="form-prov"
@@ -879,18 +1088,22 @@ export default function OrdenesCompraPage() {
                     <select
                       id="form-prov"
                       value={formProveedorId}
-                      onChange={(e) => setFormProveedorId(e.target.value)}
+                      onChange={(e) => {
+                        setFormProveedorId(e.target.value);
+                        setErroresCampos((prev) => ({ ...prev, proveedor: "" }));
+                      }}
                       disabled={guardando}
-                      required
+                      aria-invalid={Boolean(erroresCampos.proveedor)}
                       style={{
                         width: "100%",
                         padding: "9px 12px",
                         borderRadius: "7px",
                         border: "1px solid var(--color-border)",
+                        ...(erroresCampos.proveedor ? inputErrorStyle : {}),
                       }}
                     >
-                      <option value="">-- Selecciona un proveedor --</option>
-                      {proveedores.map((p) => {
+                      <option value="">-- Selecciona un proveedor activo --</option>
+                      {proveedoresActivos.map((p) => {
                         const id = p.idProveedor || p.id_proveedor;
                         const razon = p.razonSocial || p.razon_social;
                         return (
@@ -900,34 +1113,75 @@ export default function OrdenesCompraPage() {
                         );
                       })}
                     </select>
+                    {erroresCampos.proveedor && (
+                      <small style={{ color: "#c62828", display: "block", marginTop: "4px", fontWeight: "600" }}>
+                        {erroresCampos.proveedor}
+                      </small>
+                    )}
                   </div>
 
+                  {/* 2. Fecha de emisión (fecha actual, solo lectura) */}
                   <div>
                     <label
-                      htmlFor="form-fecha"
+                      htmlFor="form-fecha-emision"
                       style={{ display: "block", fontSize: "12px", fontWeight: "600", marginBottom: "6px" }}
                     >
-                      Fecha estimada de entrega <span style={{ color: "var(--color-primary)" }}>*</span>
+                      Fecha de emisión
                     </label>
                     <input
-                      id="form-fecha"
+                      id="form-fecha-emision"
                       type="date"
-                      min={hoyISO()}
-                      value={formFechaEntrega}
-                      onChange={(e) => setFormFechaEntrega(e.target.value)}
-                      disabled={guardando}
-                      required
+                      value={formFechaEmision}
+                      readOnly
+                      aria-readonly="true"
                       style={{
                         width: "100%",
                         padding: "9px 12px",
                         borderRadius: "7px",
                         border: "1px solid var(--color-border)",
+                        backgroundColor: "var(--color-bg-app)",
+                        color: "var(--color-text-muted)",
+                        cursor: "not-allowed",
                       }}
                     />
                   </div>
+
+                  {/* 3. Fecha de entrega (obligatoria y >= hoy) */}
+                  <div>
+                    <label
+                      htmlFor="form-fecha"
+                      style={{ display: "block", fontSize: "12px", fontWeight: "600", marginBottom: "6px" }}
+                    >
+                      Fecha de entrega <span style={{ color: "var(--color-primary)" }}>*</span>
+                    </label>
+                    <input
+                      id="form-fecha"
+                      type="date"
+                      min={formFechaEmision}
+                      value={formFechaEntrega}
+                      onChange={(e) => {
+                        setFormFechaEntrega(e.target.value);
+                        setErroresCampos((prev) => ({ ...prev, fechaEntrega: "" }));
+                      }}
+                      disabled={guardando}
+                      aria-invalid={Boolean(erroresCampos.fechaEntrega)}
+                      style={{
+                        width: "100%",
+                        padding: "9px 12px",
+                        borderRadius: "7px",
+                        border: "1px solid var(--color-border)",
+                        ...(erroresCampos.fechaEntrega ? inputErrorStyle : {}),
+                      }}
+                    />
+                    {erroresCampos.fechaEntrega && (
+                      <small style={{ color: "#c62828", display: "block", marginTop: "4px", fontWeight: "600" }}>
+                        {erroresCampos.fechaEntrega}
+                      </small>
+                    )}
+                  </div>
                 </div>
 
-                {/* Líneas de productos */}
+                {/* 4. Tabla de productos editable */}
                 <div style={{ marginBottom: "20px" }}>
                   <div
                     style={{
@@ -937,132 +1191,221 @@ export default function OrdenesCompraPage() {
                       marginBottom: "10px",
                     }}
                   >
-                    <h3 style={{ margin: 0, fontSize: "15px" }}>Líneas de la Orden</h3>
+                    <h3 style={{ margin: 0, fontSize: "15px" }}>Productos de la Orden</h3>
                     <button
                       type="button"
                       className="module-secondary-button"
                       onClick={agregarLinea}
                       disabled={guardando}
-                      style={{ fontSize: "12px", padding: "5px 12px" }}
+                      style={{ fontSize: "12px", padding: "6px 14px" }}
                     >
-                      + Agregar libro
+                      + Agregar línea
                     </button>
                   </div>
 
-                  <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                    {lineas.map((linea, index) => {
-                      const subtotalFila = linea.cantidad * linea.precioPactado;
+                  <div className="module-table-scroll">
+                    <table className="module-table" style={{ width: "100%", fontSize: "12px" }}>
+                      <thead>
+                        <tr>
+                          <th scope="col" style={{ textAlign: "left", minWidth: "270px" }}>
+                            Producto (Catálogo) *
+                          </th>
+                          <th scope="col" style={{ width: "110px", textAlign: "right" }}>
+                            Cantidad *
+                          </th>
+                          <th scope="col" style={{ width: "145px", textAlign: "right" }}>
+                            Precio Pactado Unit. *
+                          </th>
+                          <th scope="col" style={{ width: "95px", textAlign: "right" }}>
+                            IVA (%) *
+                          </th>
+                          <th scope="col" style={{ width: "130px", textAlign: "right" }}>
+                            Subtotal Línea
+                          </th>
+                          <th scope="col" style={{ width: "60px", textAlign: "center" }}>
+                            Quitar
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {lineas.map((linea, index) => {
+                          const cantNum = Number(linea.cantidad);
+                          const precioNum = Number(linea.precioPactado);
+                          const subtotalFila =
+                            linea.isbn && cantNum > 0 && precioNum > 0
+                              ? Math.round(cantNum * precioNum)
+                              : 0;
+                          const errFila = erroresCampos.lineas?.[index] || {};
 
-                      return (
-                        <div
-                          key={index}
-                          style={{
-                            display: "grid",
-                            gridTemplateColumns: "3fr 1fr 1.5fr 1.5fr auto",
-                            gap: "10px",
-                            alignItems: "center",
-                            backgroundColor: "var(--color-bg-app)",
-                            padding: "10px 14px",
-                            borderRadius: "8px",
-                          }}
-                        >
-                          {/* Selector de libro */}
-                          <div>
-                            <select
-                              value={linea.isbn}
-                              onChange={(e) => cambiarLibroEnLinea(index, e.target.value)}
-                              disabled={guardando}
-                              required
-                              style={{
-                                width: "100%",
-                                padding: "8px",
-                                borderRadius: "6px",
-                                border: "1px solid var(--color-border)",
-                                fontSize: "12px",
-                              }}
-                            >
-                              <option value="">-- Seleccionar Libro --</option>
-                              {catalogoLibros.map((b) => (
-                                <option key={b.isbn} value={b.isbn}>
-                                  {b.titulo} ({b.isbn}) — Costo: {formatMoney(b.costoUnitario)}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
+                          return (
+                            <tr key={index} style={{ verticalAlign: "top" }}>
+                              {/* Producto desde catálogo de libros (solo lectura una vez elegido del selector) */}
+                              <td>
+                                <select
+                                  aria-label={`Producto línea ${index + 1}`}
+                                  value={linea.isbn}
+                                  onChange={(e) => cambiarLibroEnLinea(index, e.target.value)}
+                                  disabled={guardando}
+                                  aria-invalid={Boolean(errFila.isbn)}
+                                  style={{
+                                    width: "100%",
+                                    padding: "8px",
+                                    borderRadius: "6px",
+                                    border: "1px solid var(--color-border)",
+                                    fontSize: "12px",
+                                    ...(errFila.isbn ? inputErrorStyle : {}),
+                                  }}
+                                >
+                                  <option value="">-- Seleccionar producto del catálogo --</option>
+                                  {catalogoLibros.map((b) => (
+                                    <option key={b.isbn} value={b.isbn}>
+                                      {b.titulo} ({b.isbn}) — Costo ref.: {formatMoney(b.costoUnitario)}
+                                    </option>
+                                  ))}
+                                </select>
+                                {linea.isbn && (
+                                  <small
+                                    style={{
+                                      display: "block",
+                                      marginTop: "3px",
+                                      color: "var(--color-text-muted)",
+                                      fontSize: "11px",
+                                    }}
+                                  >
+                                    ISBN: <code>{linea.isbn}</code> · Producto de catálogo (solo lectura)
+                                  </small>
+                                )}
+                                {errFila.isbn && (
+                                  <small style={{ color: "#c62828", display: "block", marginTop: "4px", fontWeight: "600" }}>
+                                    {errFila.isbn}
+                                  </small>
+                                )}
+                              </td>
 
-                          {/* Cantidad */}
-                          <div>
-                            <input
-                              type="number"
-                              min="1"
-                              placeholder="Cant."
-                              value={linea.cantidad}
-                              onChange={(e) => cambiarCantidadEnLinea(index, e.target.value)}
-                              disabled={guardando}
-                              required
-                              style={{
-                                width: "100%",
-                                padding: "8px",
-                                borderRadius: "6px",
-                                border: "1px solid var(--color-border)",
-                                textAlign: "right",
-                                fontSize: "12px",
-                              }}
-                            />
-                          </div>
+                              {/* Cantidad (entero > 0) */}
+                              <td>
+                                <input
+                                  aria-label={`Cantidad línea ${index + 1}`}
+                                  type="number"
+                                  min="1"
+                                  step="1"
+                                  placeholder="Cant."
+                                  value={linea.cantidad}
+                                  onChange={(e) => cambiarCantidadEnLinea(index, e.target.value)}
+                                  disabled={guardando}
+                                  aria-invalid={Boolean(errFila.cantidad)}
+                                  style={{
+                                    width: "100%",
+                                    padding: "8px",
+                                    borderRadius: "6px",
+                                    border: "1px solid var(--color-border)",
+                                    textAlign: "right",
+                                    fontSize: "12px",
+                                    ...(errFila.cantidad ? inputErrorStyle : {}),
+                                  }}
+                                />
+                                {errFila.cantidad && (
+                                  <small style={{ color: "#c62828", display: "block", marginTop: "4px", fontWeight: "600", textAlign: "right" }}>
+                                    {errFila.cantidad}
+                                  </small>
+                                )}
+                              </td>
 
-                          {/* Precio pactado */}
-                          <div>
-                            <input
-                              type="number"
-                              min="1"
-                              step="any"
-                              placeholder="Precio pactado"
-                              value={linea.precioPactado}
-                              onChange={(e) => cambiarPrecioEnLinea(index, e.target.value)}
-                              disabled={guardando}
-                              required
-                              style={{
-                                width: "100%",
-                                padding: "8px",
-                                borderRadius: "6px",
-                                border: "1px solid var(--color-border)",
-                                textAlign: "right",
-                                fontSize: "12px",
-                              }}
-                            />
-                          </div>
+                              {/* Precio pactado unitario (> 0) */}
+                              <td>
+                                <input
+                                  aria-label={`Precio pactado línea ${index + 1}`}
+                                  type="number"
+                                  min="1"
+                                  step="any"
+                                  placeholder="Precio unitario"
+                                  value={linea.precioPactado}
+                                  onChange={(e) => cambiarPrecioEnLinea(index, e.target.value)}
+                                  disabled={guardando}
+                                  aria-invalid={Boolean(errFila.precioPactado)}
+                                  style={{
+                                    width: "100%",
+                                    padding: "8px",
+                                    borderRadius: "6px",
+                                    border: "1px solid var(--color-border)",
+                                    textAlign: "right",
+                                    fontSize: "12px",
+                                    ...(errFila.precioPactado ? inputErrorStyle : {}),
+                                  }}
+                                />
+                                {errFila.precioPactado && (
+                                  <small style={{ color: "#c62828", display: "block", marginTop: "4px", fontWeight: "600", textAlign: "right" }}>
+                                    {errFila.precioPactado}
+                                  </small>
+                                )}
+                              </td>
 
-                          {/* Subtotal fila */}
-                          <div style={{ textAlign: "right", fontWeight: "600", fontSize: "13px" }}>
-                            {formatMoney(subtotalFila)}
-                          </div>
+                              {/* IVA en % (por defecto 19) */}
+                              <td>
+                                <input
+                                  aria-label={`IVA porcentaje línea ${index + 1}`}
+                                  type="number"
+                                  min="0"
+                                  max="100"
+                                  step="any"
+                                  value={linea.ivaPorcentaje}
+                                  onChange={(e) => cambiarIvaEnLinea(index, e.target.value)}
+                                  disabled={guardando}
+                                  aria-invalid={Boolean(errFila.ivaPorcentaje)}
+                                  style={{
+                                    width: "100%",
+                                    padding: "8px",
+                                    borderRadius: "6px",
+                                    border: "1px solid var(--color-border)",
+                                    textAlign: "right",
+                                    fontSize: "12px",
+                                    ...(errFila.ivaPorcentaje ? inputErrorStyle : {}),
+                                  }}
+                                />
+                                {errFila.ivaPorcentaje && (
+                                  <small style={{ color: "#c62828", display: "block", marginTop: "4px", fontWeight: "600", textAlign: "right" }}>
+                                    {errFila.ivaPorcentaje}
+                                  </small>
+                                )}
+                              </td>
 
-                          {/* Quitar fila */}
-                          <div>
-                            <button
-                              type="button"
-                              onClick={() => quitarLinea(index)}
-                              disabled={guardando || lineas.length <= 1}
-                              style={{
-                                background: "none",
-                                border: "none",
-                                color: lineas.length <= 1 ? "#ccc" : "#c62828",
-                                cursor: lineas.length <= 1 ? "not-allowed" : "pointer",
-                                fontSize: "16px",
-                              }}
-                              title="Quitar línea"
-                            >
-                              🗑
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
+                              {/* Subtotal de la línea calculado automáticamente */}
+                              <td style={{ textAlign: "right", fontWeight: "600", fontSize: "13px", paddingTop: "14px" }}>
+                                {formatMoney(subtotalFila)}
+                              </td>
+
+                              {/* Quitar línea */}
+                              <td style={{ textAlign: "center", paddingTop: "10px" }}>
+                                <button
+                                  type="button"
+                                  onClick={() => quitarLinea(index)}
+                                  disabled={guardando || lineas.length <= 1}
+                                  style={{
+                                    background: "none",
+                                    border: "none",
+                                    color: lineas.length <= 1 ? "#ccc" : "#c62828",
+                                    cursor: lineas.length <= 1 ? "not-allowed" : "pointer",
+                                    fontSize: "16px",
+                                  }}
+                                  title={
+                                    lineas.length <= 1
+                                      ? "La orden debe tener al menos una línea"
+                                      : "Quitar línea"
+                                  }
+                                  aria-label={`Quitar línea ${index + 1}`}
+                                >
+                                  🗑
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
 
-                {/* Resumen de totales en vivo */}
+                {/* 5. Totales calculados en tiempo real: Neto, IVA y Total */}
                 <div
                   style={{
                     display: "flex",
@@ -1075,11 +1418,11 @@ export default function OrdenesCompraPage() {
                   }}
                 >
                   <div style={{ display: "flex", width: "240px", justifyContent: "space-between" }}>
-                    <span style={{ color: "var(--color-text-muted)" }}>Subtotal Neto:</span>
+                    <span style={{ color: "var(--color-text-muted)" }}>Neto:</span>
                     <span>{formatMoney(totalNeto)}</span>
                   </div>
                   <div style={{ display: "flex", width: "240px", justifyContent: "space-between" }}>
-                    <span style={{ color: "var(--color-text-muted)" }}>IVA (19%):</span>
+                    <span style={{ color: "var(--color-text-muted)" }}>IVA:</span>
                     <span>{formatMoney(totalIva)}</span>
                   </div>
                   <div
@@ -1094,12 +1437,12 @@ export default function OrdenesCompraPage() {
                       paddingTop: "6px",
                     }}
                   >
-                    <span>Total Estimado:</span>
+                    <span>Total:</span>
                     <span>{formatMoney(totalFinal)}</span>
                   </div>
                 </div>
 
-                {/* Botones de acción */}
+                {/* 6. Botones "Cancelar" y "Generar y enviar orden" */}
                 <div
                   style={{
                     display: "flex",
@@ -1133,7 +1476,7 @@ export default function OrdenesCompraPage() {
                       opacity: guardando ? 0.7 : 1,
                     }}
                   >
-                    {guardando ? "Emitiendo orden…" : "Guardar orden"}
+                    {guardando ? "Generando orden…" : "Generar y enviar orden"}
                   </button>
                 </div>
               </form>
