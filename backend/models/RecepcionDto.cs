@@ -31,6 +31,7 @@ namespace backend.Models
         public int IdOc { get; set; }
         public int IdProveedor { get; set; }
         public string ProveedorNombre { get; set; }
+        public string Estado { get; set; }
         public string Fecha { get; set; }
         public string FechaEntrega { get; set; }
         public List<LineaPendienteDto> Lineas { get; set; } = new List<LineaPendienteDto>();
@@ -41,11 +42,15 @@ namespace backend.Models
         [JsonProperty("proveedor")]
         public string ProveedorSnake => ProveedorNombre;
 
+        [JsonProperty("estado")]
+        public string EstadoSnake => Estado;
+
         [JsonProperty("fecha_entrega")]
         public string FechaEntregaSnake => FechaEntrega;
 
         public bool ShouldSerializeIdOcSnake() => false;
         public bool ShouldSerializeProveedorSnake() => false;
+        public bool ShouldSerializeEstadoSnake() => false;
         public bool ShouldSerializeFechaEntregaSnake() => false;
     }
 

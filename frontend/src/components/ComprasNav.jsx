@@ -7,6 +7,7 @@ import ErpIcon from "@/components/ErpIcon";
 export default function ComprasNav() {
   const pathname = usePathname();
   const esOrdenes = pathname === "/compras";
+  const esRecepciones = pathname === "/compras/recepciones";
   const esHistorico = pathname === "/compras/reportes/historico";
   const esVariacion = pathname === "/compras/reportes/variacion-precios";
 
@@ -19,6 +20,14 @@ export default function ComprasNav() {
       >
         <ErpIcon name="purchases" />
         Órdenes de compra
+      </Link>
+      <Link
+        href="/compras/recepciones"
+        className={`ventas-subnav-link ${esRecepciones ? "is-active" : ""}`}
+        aria-current={esRecepciones ? "page" : undefined}
+      >
+        <ErpIcon name="inventory" />
+        Recepción de mercancía
       </Link>
       <Link
         href="/compras/reportes/historico"
