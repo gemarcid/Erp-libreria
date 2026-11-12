@@ -445,5 +445,24 @@ export async function fetchReporteCumplimientoEntregas({ desde, hasta, idProveed
   return result;
 }
 
+export async function fetchReporteGastoCategoria({ desde, hasta, categoria } = {}) {
+  const token = await obtenerToken();
+  const params = new URLSearchParams();
+  if (desde) params.set("desde", desde);
+  if (hasta) params.set("hasta", hasta);
+  if (categoria) params.set("categoria", categoria);
+
+  const query = params.toString() ? `?${params.toString()}` : "";
+  const { response, result } = await requestVentasBackend(`/api/compras/reportes/gasto-categoria${query}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!response.ok) {
+    throw new Error(result.error || "No se pudo obtener el reporte de gasto por categoría.");
+  }
+
+  return result;
+}
+
 
 

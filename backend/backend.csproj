@@ -206,6 +206,8 @@
     <Compile Include="Models\ReporteCuentasPorPagarDto.cs" />
     <Compile Include="Controllers\ReporteCumplimientoEntregasController.cs" />
     <Compile Include="Models\ReporteCumplimientoEntregasDto.cs" />
+    <Compile Include="Controllers\ReporteGastoCategoriaController.cs" />
+    <Compile Include="Models\ReporteGastoCategoriaDto.cs" />
     <Compile Include="Controllers\VentasController.cs" />
     <Compile Include="Controllers\ContabilidadController.cs" />
     <Compile Include="Controllers\DashboardController.cs" />
