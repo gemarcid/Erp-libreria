@@ -204,6 +204,8 @@
     <Compile Include="Models\ReporteVariacionPreciosDto.cs" />
     <Compile Include="Controllers\ReporteCuentasPorPagarController.cs" />
     <Compile Include="Models\ReporteCuentasPorPagarDto.cs" />
+    <Compile Include="Controllers\ReporteCumplimientoEntregasController.cs" />
+    <Compile Include="Models\ReporteCumplimientoEntregasDto.cs" />
     <Compile Include="Controllers\VentasController.cs" />
     <Compile Include="Controllers\ContabilidadController.cs" />
     <Compile Include="Controllers\DashboardController.cs" />

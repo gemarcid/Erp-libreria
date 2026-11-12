@@ -13,6 +13,7 @@ export default function ComprasNav() {
   const esHistorico = pathname === "/compras/reportes/historico";
   const esVariacion = pathname === "/compras/reportes/variacion-precios";
   const esCuentasPorPagar = pathname === "/compras/reportes/cuentas-por-pagar";
+  const esCumplimiento = pathname === "/compras/reportes/cumplimiento-entregas";
 
   return (
     <nav className="ventas-subnav" aria-label="Navegación de compras">
@@ -71,6 +72,14 @@ export default function ComprasNav() {
       >
         <ErpIcon name="trend" />
         Variación de precios
+      </Link>
+      <Link
+        href="/compras/reportes/cumplimiento-entregas"
+        className={`ventas-subnav-link ${esCumplimiento ? "is-active" : ""}`}
+        aria-current={esCumplimiento ? "page" : undefined}
+      >
+        <ErpIcon name="clock" />
+        Cumplimiento de entregas
       </Link>
     </nav>
   );
