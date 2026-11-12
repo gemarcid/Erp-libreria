@@ -51,6 +51,12 @@ export default function InventarioNav({ activeTab }) {
       icon: "trend",
       key: "kardex",
     },
+    {
+      href: "/inventario/reportes/valorizacion",
+      label: "Reporte: Valorización Global",
+      icon: "accounting",
+      key: "valorizacion",
+    },
   ];
 
   return (
