@@ -16,6 +16,12 @@ export default function InventarioNav({ activeTab }) {
       exact: true,
     },
     {
+      href: "/inventario/recepcion-compras",
+      label: "Recepción de Compras",
+      icon: "purchases",
+      key: "recepcion-compras",
+    },
+    {
       href: "/inventario/ajuste-stock",
       label: "Ajuste de Stock",
       icon: "settings",
