@@ -57,6 +57,12 @@ export default function InventarioNav({ activeTab }) {
       icon: "accounting",
       key: "valorizacion",
     },
+    {
+      href: "/inventario/reportes/rotacion",
+      label: "Reporte: Rotación y Antigüedad",
+      icon: "clock",
+      key: "rotacion",
+    },
   ];
 
   return (
