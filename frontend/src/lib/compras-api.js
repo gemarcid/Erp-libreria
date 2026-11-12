@@ -281,5 +281,25 @@ export async function fetchReporteHistorico({ desde, hasta, idProveedor } = {}) 
   return result;
 }
 
+export async function fetchReporteVariacionPrecios({ desde, hasta, isbn, idProveedor } = {}) {
+  const token = await obtenerToken();
+  const params = new URLSearchParams();
+  if (desde) params.set("desde", desde);
+  if (hasta) params.set("hasta", hasta);
+  if (isbn) params.set("isbn", isbn);
+  if (idProveedor) params.set("id_proveedor", idProveedor);
+
+  const query = params.toString() ? `?${params.toString()}` : "";
+  const { response, result } = await requestVentasBackend(`/api/compras/reportes/variacion-precios${query}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!response.ok) {
+    throw new Error(result.error || "No se pudo obtener el reporte de variación de precios.");
+  }
+
+  return result;
+}
+
 
 
