@@ -28,6 +28,12 @@ export default function InventarioNav({ activeTab }) {
       key: "transferencias",
     },
     {
+      href: "/inventario/devoluciones",
+      label: "Mermas y Devoluciones",
+      icon: "logout",
+      key: "devoluciones",
+    },
+    {
       href: "/inventario/ajuste-stock",
       label: "Ajuste de Stock",
       icon: "settings",
