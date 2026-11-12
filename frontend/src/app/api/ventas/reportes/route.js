@@ -14,12 +14,14 @@ export async function GET(request) {
   const hasta = searchParams.get("hasta") || "";
   const categoria = searchParams.get("categoria") || "";
   const filtro = searchParams.get("filtro") || "todos";
+  const cliente = searchParams.get("cliente") || "";
 
   const params = new URLSearchParams();
   if (desde) params.set("desde", desde);
   if (hasta) params.set("hasta", hasta);
   if (categoria) params.set("categoria", categoria);
   if (filtro) params.set("filtro", filtro);
+  if (cliente) params.set("cliente", cliente);
   const query = params.toString();
 
   // Mapeo al endpoint de ASP.NET
@@ -111,7 +113,7 @@ export async function GET(request) {
   }
 
   if (tipo === "cuentas-cobrar") {
-    const pendientes = [
+    let pendientes = [
       {
         id_venta: 2,
         folio: "F-50001",
@@ -136,15 +138,25 @@ export async function GET(request) {
       },
     ];
 
+    if (cliente.trim()) {
+      const q = cliente.trim().toLowerCase();
+      pendientes = pendientes.filter(
+        (p) =>
+          p.cliente?.nombre?.toLowerCase().includes(q) ||
+          p.cliente?.rut?.toLowerCase().includes(q) ||
+          p.folio?.toLowerCase().includes(q)
+      );
+    }
+
     return NextResponse.json({
       success: true,
       total_documentos: pendientes.length,
       saldo_total_pendiente: pendientes.reduce((a, b) => a + b.saldo_pendiente, 0),
       resumen_tramos: {
-        vigentes: 0,
-        mora_30: 2,
-        mora_60: 0,
-        mora_90_mas: 0,
+        vigentes: pendientes.filter((p) => p.dias_mora <= 0).length,
+        mora_30: pendientes.filter((p) => p.dias_mora > 0 && p.dias_mora <= 30).length,
+        mora_60: pendientes.filter((p) => p.dias_mora > 30 && p.dias_mora <= 60).length,
+        mora_90_mas: pendientes.filter((p) => p.dias_mora > 60).length,
       },
       reporte: pendientes,
     });
