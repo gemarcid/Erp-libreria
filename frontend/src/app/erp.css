@@ -668,6 +668,12 @@ body:has(.erp-menu-dialog[open]) { overflow: hidden; }
   grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
   gap: 24px;
 }
+#main-content :is(.erp-metrics, .erp-overview-grid, .erp-details-grid) > :only-child {
+  grid-column: 1 / -1;
+}
+#main-content :is(.erp-metrics, .erp-overview-grid):empty {
+  display: none;
+}
 .erp-search {
   display: flex;
   align-items: center;
@@ -1267,6 +1273,17 @@ body:has(.erp-menu-dialog[open]) { overflow: hidden; }
   }
   .erp-main {
     padding: 24px 18px 18px;
+  }
+  #main-content .erp-page-heading {
+    flex-wrap: wrap;
+    gap: 12px;
+    overflow-wrap: anywhere;
+  }
+  #main-content .erp-chart {
+    gap: 8px;
+  }
+  #main-content .erp-chart-scale {
+    width: auto;
   }
   .erp-page-heading h1 {
     font-size: 23px;
