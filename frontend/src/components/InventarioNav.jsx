@@ -22,6 +22,12 @@ export default function InventarioNav({ activeTab }) {
       key: "recepcion-compras",
     },
     {
+      href: "/inventario/transferencias",
+      label: "Transferencias entre Bodegas",
+      icon: "arrow",
+      key: "transferencias",
+    },
+    {
       href: "/inventario/ajuste-stock",
       label: "Ajuste de Stock",
       icon: "settings",
