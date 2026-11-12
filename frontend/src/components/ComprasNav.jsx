@@ -10,6 +10,7 @@ export default function ComprasNav() {
   const esRecepciones = pathname === "/compras/recepciones";
   const esFacturas = pathname === "/compras/facturas";
   const esConciliacion = pathname === "/compras/conciliacion";
+  const esProveedores = pathname === "/compras/proveedores";
   const esHistorico = pathname === "/compras/reportes/historico";
   const esVariacion = pathname === "/compras/reportes/variacion-precios";
   const esCuentasPorPagar = pathname === "/compras/reportes/cuentas-por-pagar";
@@ -49,6 +50,14 @@ export default function ComprasNav() {
       >
         <ErpIcon name="calendar" />
         Conciliación y pagos
+      </Link>
+      <Link
+        href="/compras/proveedores"
+        className={`ventas-subnav-link ${esProveedores ? "is-active" : ""}`}
+        aria-current={esProveedores ? "page" : undefined}
+      >
+        <ErpIcon name="user" />
+        Proveedores
       </Link>
       <Link
         href="/compras/reportes/cuentas-por-pagar"

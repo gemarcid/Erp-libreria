@@ -18,11 +18,13 @@ async function obtenerToken() {
   return token;
 }
 
-export async function fetchProveedores(buscar = "", { soloActivos = false } = {}) {
+export async function fetchProveedores(buscar = "", { soloActivos = false, estado = "", categoria = "" } = {}) {
   const token = await obtenerToken();
   const params = new URLSearchParams();
   if (buscar && buscar.trim()) params.set("buscar", buscar.trim());
   if (soloActivos) params.set("soloActivos", "true");
+  if (estado && estado.trim()) params.set("estado", estado.trim());
+  if (categoria && categoria.trim()) params.set("categoria", categoria.trim());
   const query = params.toString() ? `?${params.toString()}` : "";
   const { response, result } = await requestVentasBackend(`/api/proveedores${query}`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -33,6 +35,50 @@ export async function fetchProveedores(buscar = "", { soloActivos = false } = {}
   }
 
   return Array.isArray(result) ? result : [];
+}
+
+export async function fetchCategoriasProveedor() {
+  const token = await obtenerToken();
+  const { response, result } = await requestVentasBackend("/api/proveedores/categorias", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!response.ok) {
+    throw new Error(result.error || "No se pudieron obtener las categorías de libros.");
+  }
+
+  return Array.isArray(result) ? result : [];
+}
+
+export async function guardarProveedorCatalogo(datos, idProveedor = null) {
+  const token = await obtenerToken();
+  const esEdicion = idProveedor !== null && idProveedor !== undefined;
+  const url = esEdicion ? `/api/proveedores/${idProveedor}` : "/api/proveedores";
+  const method = esEdicion ? "PUT" : "POST";
+
+  const { response, result } = await requestVentasBackend(url, {
+    method,
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(datos),
+  });
+
+  if (!response.ok) {
+    return {
+      ok: false,
+      status: response.status,
+      error: result.error || (esEdicion ? "No se pudo actualizar el proveedor." : "No se pudo registrar el proveedor."),
+      proveedorExistente: result.proveedorExistente || result.proveedor_existente || null,
+    };
+  }
+
+  return {
+    ok: true,
+    status: response.status,
+    proveedor: result,
+  };
 }
 
 export async function fetchProveedoresActivos(buscar = "") {
