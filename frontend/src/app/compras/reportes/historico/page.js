@@ -72,6 +72,7 @@ export default function ReporteHistoricoComprasPage() {
       // Validación cliente: desde no mayor que hasta
       if (filtroDesde && filtroHasta && filtroDesde > filtroHasta) {
         setError("La fecha 'desde' no puede ser posterior a la fecha 'hasta'.");
+        setReporte(null);
         return;
       }
 
@@ -382,125 +383,127 @@ export default function ReporteHistoricoComprasPage() {
         {/* CONTENIDO PRINCIPAL DEL REPORTE */}
         {!cargando && !error && (
           <>
-            {/* TARJETAS RESUMEN */}
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-                gap: "16px",
-              }}
-            >
+            {/* TARJETAS RESUMEN (solo cuando hay compras en el período) */}
+            {filas.length > 0 && (
               <div
-                className="erp-card"
                 style={{
-                  padding: "18px 22px",
-                  borderRadius: "10px",
-                  border: "1px solid var(--color-border, #e2e8f0)",
-                  backgroundColor: "#fff",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "6px",
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                  gap: "16px",
                 }}
               >
-                <span
+                <div
+                  className="erp-card"
                   style={{
-                    fontSize: "12px",
-                    fontWeight: "600",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.5px",
-                    color: "var(--color-text-muted, #64748b)",
+                    padding: "18px 22px",
+                    borderRadius: "10px",
+                    border: "1px solid var(--color-border, #e2e8f0)",
+                    backgroundColor: "#fff",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "6px",
                   }}
                 >
-                  Órdenes de Compra
-                </span>
-                <span
-                  style={{
-                    fontSize: "26px",
-                    fontWeight: "700",
-                    color: "var(--color-primary, #0f172a)",
-                  }}
-                >
-                  {totalOrdenes}
-                </span>
-                <span style={{ fontSize: "12px", color: "var(--color-text-muted, #64748b)" }}>
-                  Aprobadas o recibidas en el rango
-                </span>
-              </div>
+                  <span
+                    style={{
+                      fontSize: "12px",
+                      fontWeight: "600",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.5px",
+                      color: "var(--color-text-muted, #64748b)",
+                    }}
+                  >
+                    Órdenes de Compra
+                  </span>
+                  <span
+                    style={{
+                      fontSize: "26px",
+                      fontWeight: "700",
+                      color: "var(--color-primary, #0f172a)",
+                    }}
+                  >
+                    {totalOrdenes}
+                  </span>
+                  <span style={{ fontSize: "12px", color: "var(--color-text-muted, #64748b)" }}>
+                    Aprobadas, recibidas parciales o recibidas en el rango
+                  </span>
+                </div>
 
-              <div
-                className="erp-card"
-                style={{
-                  padding: "18px 22px",
-                  borderRadius: "10px",
-                  border: "1px solid var(--color-border, #e2e8f0)",
-                  backgroundColor: "#fff",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "6px",
-                }}
-              >
-                <span
+                <div
+                  className="erp-card"
                   style={{
-                    fontSize: "12px",
-                    fontWeight: "600",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.5px",
-                    color: "var(--color-text-muted, #64748b)",
+                    padding: "18px 22px",
+                    borderRadius: "10px",
+                    border: "1px solid var(--color-border, #e2e8f0)",
+                    backgroundColor: "#fff",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "6px",
                   }}
                 >
-                  Unidades Compradas
-                </span>
-                <span
-                  style={{
-                    fontSize: "26px",
-                    fontWeight: "700",
-                    color: "var(--color-primary, #0f172a)",
-                  }}
-                >
-                  {totalUnidades.toLocaleString("es-CL")}
-                </span>
-                <span style={{ fontSize: "12px", color: "var(--color-text-muted, #64748b)" }}>
-                  Total de libros solicitados
-                </span>
-              </div>
+                  <span
+                    style={{
+                      fontSize: "12px",
+                      fontWeight: "600",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.5px",
+                      color: "var(--color-text-muted, #64748b)",
+                    }}
+                  >
+                    Unidades Compradas
+                  </span>
+                  <span
+                    style={{
+                      fontSize: "26px",
+                      fontWeight: "700",
+                      color: "var(--color-primary, #0f172a)",
+                    }}
+                  >
+                    {totalUnidades.toLocaleString("es-CL")}
+                  </span>
+                  <span style={{ fontSize: "12px", color: "var(--color-text-muted, #64748b)" }}>
+                    Total de libros solicitados
+                  </span>
+                </div>
 
-              <div
-                className="erp-card"
-                style={{
-                  padding: "18px 22px",
-                  borderRadius: "10px",
-                  border: "1px solid var(--color-border, #e2e8f0)",
-                  backgroundColor: "#fff",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "6px",
-                }}
-              >
-                <span
+                <div
+                  className="erp-card"
                   style={{
-                    fontSize: "12px",
-                    fontWeight: "600",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.5px",
-                    color: "var(--color-text-muted, #64748b)",
+                    padding: "18px 22px",
+                    borderRadius: "10px",
+                    border: "1px solid var(--color-border, #e2e8f0)",
+                    backgroundColor: "#fff",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "6px",
                   }}
                 >
-                  Monto Acumulado Total
-                </span>
-                <span
-                  style={{
-                    fontSize: "26px",
-                    fontWeight: "700",
-                    color: "#166534",
-                  }}
-                >
-                  {formatMoney(totalMonto)}
-                </span>
-                <span style={{ fontSize: "12px", color: "var(--color-text-muted, #64748b)" }}>
-                  Total compras (IVA incluido)
-                </span>
+                  <span
+                    style={{
+                      fontSize: "12px",
+                      fontWeight: "600",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.5px",
+                      color: "var(--color-text-muted, #64748b)",
+                    }}
+                  >
+                    Monto Acumulado Total
+                  </span>
+                  <span
+                    style={{
+                      fontSize: "26px",
+                      fontWeight: "700",
+                      color: "#166534",
+                    }}
+                  >
+                    {formatMoney(totalMonto)}
+                  </span>
+                  <span style={{ fontSize: "12px", color: "var(--color-text-muted, #64748b)" }}>
+                    Total compras (IVA incluido)
+                  </span>
+                </div>
               </div>
-            </div>
+            )}
 
             {/* SI NO HAY FILAS */}
             {filas.length === 0 && (
@@ -515,7 +518,7 @@ export default function ReporteHistoricoComprasPage() {
                 }}
               >
                 <p style={{ fontSize: "16px", fontWeight: "600", margin: "0 0 6px 0" }}>
-                  No se encontraron compras en el período seleccionado.
+                  No hay compras registradas para ese proveedor en el período
                 </p>
                 <p style={{ fontSize: "13px", color: "var(--color-text-muted)", margin: 0 }}>
                   Prueba ampliando el rango de fechas o seleccionando otro proveedor.
