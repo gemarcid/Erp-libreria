@@ -12,14 +12,26 @@ ALTER TABLE FACTURA_PROVEEDOR
     ADD COLUMN monto_neto DECIMAL(12,2) NOT NULL DEFAULT 0 AFTER fecha_pago,
     ADD COLUMN iva DECIMAL(12,2) NOT NULL DEFAULT 0 AFTER monto_neto;
 
--- 2. Poblar valores consistentes en las 3 facturas semilla existentes (#1, #2, #3)
-UPDATE FACTURA_PROVEEDOR
-SET fecha_vencimiento = COALESCE(fecha_pago, DATE_ADD(fecha_emision, INTERVAL 30 DAY)),
-    monto_neto = ROUND(monto_total / 1.19, 2),
-    iva = monto_total - ROUND(monto_total / 1.19, 2)
-WHERE fecha_vencimiento IS NULL;
+-- 2. Poblar fecha_vencimiento, monto_neto e iva en las facturas semilla (solo filas con monto_neto = 0)
+--    sin modificar monto_total ni estado_pago.
+UPDATE FACTURA_PROVEEDOR fp
+INNER JOIN ORDEN_COMPRA oc ON fp.id_oc = oc.id_oc
+INNER JOIN PROVEEDOR p ON oc.id_proveedor = p.id_proveedor
+SET fp.fecha_vencimiento = DATE_ADD(
+        fp.fecha_emision,
+        INTERVAL (
+            CASE
+                WHEN p.condicion_pago REGEXP '^[0-9]+'
+                THEN CAST(REGEXP_SUBSTR(p.condicion_pago, '^[0-9]+') AS UNSIGNED)
+                ELSE 30
+            END
+        ) DAY
+    ),
+    fp.monto_neto = ROUND(fp.monto_total / 1.19, 2),
+    fp.iva = fp.monto_total - ROUND(fp.monto_total / 1.19, 2)
+WHERE fp.monto_neto = 0;
 
--- 3. Eliminar el CHECK actual de estado_pago en un ALTER TABLE separado
+-- 3. Eliminar el CHECK actual (chk_factura_estado) en un ALTER TABLE separado
 ALTER TABLE FACTURA_PROVEEDOR
     DROP CHECK chk_factura_estado;
 
@@ -31,4 +43,3 @@ ALTER TABLE FACTURA_PROVEEDOR
         estado_pago IN ('pendiente', 'pendiente de conciliacion', 'con discrepancias', 'conciliada', 'pagada')
     ),
     ADD CONSTRAINT uk_factura_oc UNIQUE (id_oc);
-

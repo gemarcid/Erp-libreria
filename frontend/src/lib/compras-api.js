@@ -301,5 +301,58 @@ export async function fetchReporteVariacionPrecios({ desde, hasta, isbn, idProve
   return result;
 }
 
+export async function fetchOrdenesPendientesFacturar() {
+  const token = await obtenerToken();
+  const { response, result } = await requestVentasBackend("/api/facturas-proveedor/ordenes-pendientes", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!response.ok) {
+    throw new Error(result.error || "No se pudieron obtener las órdenes pendientes de facturar.");
+  }
+
+  return Array.isArray(result) ? result : [];
+}
+
+export async function fetchFacturasProveedor() {
+  const token = await obtenerToken();
+  const { response, result } = await requestVentasBackend("/api/facturas-proveedor", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!response.ok) {
+    throw new Error(result.error || "No se pudieron obtener las facturas de proveedor.");
+  }
+
+  return Array.isArray(result) ? result : [];
+}
+
+export async function registrarFacturaProveedor(datos) {
+  const token = await obtenerToken();
+  const { response, result } = await requestVentasBackend("/api/facturas-proveedor", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(datos),
+  });
+
+  if (!response.ok) {
+    return {
+      ok: false,
+      status: response.status,
+      error: result.error || "No se pudo registrar la factura de proveedor.",
+      facturaExistente: result.facturaExistente || result.factura_existente || null,
+    };
+  }
+
+  return {
+    ok: true,
+    status: response.status,
+    ...result,
+  };
+}
+
 
 
