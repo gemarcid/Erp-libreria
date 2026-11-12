@@ -14,6 +14,16 @@ namespace backend.Models
 
         public string tipo_documento { get; set; }
 
+        public string folio { get; set; }
+
+        public string fecha_vencimiento { get; set; }
+
+        public decimal? descuento { get; set; }
+
+        public int? puntos_canjeados { get; set; }
+
+        public int? id_pedido { get; set; }
+
         public List<DetalleVentaRequest> detalles { get; set; }
     }
 }

@@ -153,8 +153,27 @@ CREATE TABLE CLIENTE (
     id_cliente        INT AUTO_INCREMENT PRIMARY KEY,
     rut               VARCHAR(15) NOT NULL UNIQUE,
     nombre            VARCHAR(150) NOT NULL,
+    correo            VARCHAR(100) NULL,
+    telefono          VARCHAR(30) NULL,
+    direccion         VARCHAR(200) NULL,
     tipo_cliente      VARCHAR(20) NOT NULL DEFAULT 'persona', -- persona, colegio, empresa
-    puntos_fidelidad  INT NOT NULL DEFAULT 0
+    puntos_fidelidad  INT NOT NULL DEFAULT 0,
+    limite_credito    DECIMAL(12,2) NOT NULL DEFAULT 500000,
+    credito_utilizado DECIMAL(12,2) NOT NULL DEFAULT 0
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS PROMOCION (
+    id_promocion     INT AUTO_INCREMENT PRIMARY KEY,
+    nombre           VARCHAR(100) NOT NULL,
+    descripcion      VARCHAR(255),
+    tipo             VARCHAR(30) NOT NULL, -- 'porcentaje', 'monto_fijo', '2x1'
+    valor            DECIMAL(10,2) NOT NULL DEFAULT 0,
+    categoria        VARCHAR(80) NULL,
+    isbn             VARCHAR(20) NULL,
+    fecha_inicio     DATE NOT NULL,
+    fecha_fin        DATE NOT NULL,
+    activo           BOOLEAN NOT NULL DEFAULT TRUE,
+    CONSTRAINT fk_promocion_libro FOREIGN KEY (isbn) REFERENCES LIBRO(isbn) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 ALTER TABLE USUARIO
