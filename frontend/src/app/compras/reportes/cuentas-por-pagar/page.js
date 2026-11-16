@@ -6,6 +6,7 @@ import ErpIcon from "@/components/ErpIcon";
 import ComprasNav from "@/components/ComprasNav";
 import { fetchProveedores, fetchReporteCuentasPorPagar } from "@/lib/compras-api";
 import { formatCurrency } from "@/lib/compras-format";
+import "../../compras.css";
 
 function hoyIso() {
   const d = new Date();
@@ -89,38 +90,10 @@ export default function ReporteCuentasPorPagarPage() {
     return { backgroundColor: "#f0fdf4", color: "#166534" };
   }
 
-  function estiloBadgePorAlerta(nivel) {
-    if (nivel === "rojo") {
-      return {
-        backgroundColor: "#fee2e2",
-        color: "#b91c1c",
-        border: "1px solid #fca5a5",
-        padding: "0.2rem 0.55rem",
-        borderRadius: "999px",
-        fontWeight: 600,
-        fontSize: "0.8rem",
-      };
-    }
-    if (nivel === "ambar") {
-      return {
-        backgroundColor: "#fef3c7",
-        color: "#b45309",
-        border: "1px solid #fcd34d",
-        padding: "0.2rem 0.55rem",
-        borderRadius: "999px",
-        fontWeight: 600,
-        fontSize: "0.8rem",
-      };
-    }
-    return {
-      backgroundColor: "#dcfce7",
-      color: "#15803d",
-      border: "1px solid #86efac",
-      padding: "0.2rem 0.55rem",
-      borderRadius: "999px",
-      fontWeight: 600,
-      fontSize: "0.8rem",
-    };
+  function badgeClassPorAlerta(nivel) {
+    if (nivel === "rojo") return "danger";
+    if (nivel === "ambar") return "warning";
+    return "success";
   }
 
   return (
@@ -131,9 +104,8 @@ export default function ReporteCuentasPorPagarPage() {
       liveData
       subnav={<ComprasNav />}
     >
-      <div className="erp-main">
-
-        <section className="compras-panel" style={{ marginBottom: "1.5rem" }}>
+      <div className="inventory-screen">
+        <section className="erp-card inventory-table-panel">
           <form
             onSubmit={handleGenerar}
             style={{
@@ -153,8 +125,8 @@ export default function ReporteCuentasPorPagarPage() {
               >
                 <option value="">Todos los proveedores</option>
                 {proveedores.map((p) => {
-                  const id = p.IdProveedor ?? p.id_proveedor ?? p.id;
-                  const razon = p.RazonSocial ?? p.razon_social ?? p.nombre;
+                  const id = p.idProveedor ?? p.IdProveedor ?? p.id_proveedor ?? p.id;
+                  const razon = p.razonSocial ?? p.RazonSocial ?? p.razon_social ?? p.nombre;
                   return (
                     <option key={id} value={id}>
                       {razon}
@@ -178,7 +150,7 @@ export default function ReporteCuentasPorPagarPage() {
             <div>
               <button
                 type="submit"
-                className="compras-btn compras-btn--primary"
+                className="module-primary-button"
                 disabled={cargando}
               >
                 <ErpIcon name="search" />
@@ -189,20 +161,20 @@ export default function ReporteCuentasPorPagarPage() {
         </section>
 
         {error && (
-          <div className="compras-alert compras-alert--error" role="alert">
+          <div className="ventas-message ventas-message-error" role="alert">
             <strong>Error:</strong> {error}
           </div>
         )}
 
         {!error && cargando && (
-          <section className="compras-panel">
-            <p className="compras-empty">Consultando cuentas por pagar...</p>
+          <section className="erp-card inventory-table-panel">
+            <p className="erp-empty">Consultando cuentas por pagar...</p>
           </section>
         )}
 
         {!error && !cargando && reporte && totalFacturas === 0 && (
-          <section className="compras-panel">
-            <div className="compras-empty" role="status">
+          <section className="erp-card inventory-table-panel">
+            <div className="erp-empty" role="status">
               No hay facturas pendientes de pago con los filtros seleccionados
             </div>
           </section>
@@ -211,21 +183,19 @@ export default function ReporteCuentasPorPagarPage() {
         {!error && !cargando && reporte && totalFacturas > 0 && (
           <>
             <section
-              className="compras-kpis"
               style={{
                 display: "grid",
                 gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
                 gap: "1rem",
-                marginBottom: "1.25rem",
               }}
             >
-              <article className="compras-kpi-card">
+              <article className="erp-card compras-kpi-card">
                 <span className="compras-kpi-label">Total pendiente de pago</span>
                 <strong className="compras-kpi-value">{formatCurrency(totalPendientePago)}</strong>
                 <small>Fecha de corte: {reporte.FechaCorte ?? reporte.fecha_corte}</small>
               </article>
 
-              <article className="compras-kpi-card">
+              <article className="erp-card compras-kpi-card">
                 <span className="compras-kpi-label">Cantidad de facturas pendientes</span>
                 <strong className="compras-kpi-value">{totalFacturas}</strong>
                 <small>Facturas con estado distinto de pagada</small>
@@ -237,7 +207,6 @@ export default function ReporteCuentasPorPagarPage() {
                 display: "grid",
                 gridTemplateColumns: "repeat(auto-fit, minmax(185px, 1fr))",
                 gap: "0.85rem",
-                marginBottom: "1.5rem",
               }}
             >
               {tramos.map((t) => {
@@ -251,7 +220,7 @@ export default function ReporteCuentasPorPagarPage() {
                 return (
                   <article
                     key={cod}
-                    className="compras-kpi-card"
+                    className="erp-card compras-kpi-card"
                     style={{
                       borderLeft: `4px solid ${
                         esVig ? "#16a34a" : esPorVencer ? "#d97706" : "#dc2626"
@@ -268,7 +237,7 @@ export default function ReporteCuentasPorPagarPage() {
               })}
             </section>
 
-            <section className="compras-panel">
+            <section className="erp-card inventory-table-panel">
               <div className="compras-panel-header">
                 <div>
                   <h2>Detalle de facturas por pagar</h2>
@@ -279,8 +248,8 @@ export default function ReporteCuentasPorPagarPage() {
                 </div>
               </div>
 
-              <div className="compras-table-wrap">
-                <table className="compras-table">
+              <div className="module-table-scroll">
+                <table className="module-table">
                   <thead>
                     <tr>
                       <th>Proveedor</th>
@@ -299,7 +268,7 @@ export default function ReporteCuentasPorPagarPage() {
                       const prov = f.ProveedorNombre ?? f.proveedor;
                       const nroFac = f.NroFactura ?? f.nro_factura;
                       const idOc = f.IdOc ?? f.id_oc;
-                      const venc = f.FechaVencimiento ?? f.fecha_vencimiento;
+                      const venc = f.FechaVencimiento ?? f.fecha_vencimiento ?? "—";
                       const diasDif = Number(f.DiasDiferencia ?? f.dias_diferencia ?? 0);
                       const diasAtr = Number(f.DiasAtraso ?? f.dias_atraso ?? 0);
                       const diasVenc = Number(f.DiasParaVencer ?? f.dias_para_vencer ?? 0);
@@ -311,7 +280,9 @@ export default function ReporteCuentasPorPagarPage() {
                         f.FechaPagoProgramada ?? f.fecha_pago_programada ?? "—";
 
                       const textoDias =
-                        diasDif < 0
+                        !venc || venc === "—"
+                          ? `Sin vencimiento (${tramoEtiq})`
+                          : diasDif < 0
                           ? `${diasAtr} día(s) de atraso (${tramoEtiq})`
                           : diasDif === 0
                           ? `Vence hoy (${tramoEtiq})`
@@ -324,9 +295,11 @@ export default function ReporteCuentasPorPagarPage() {
                           </td>
                           <td>{nroFac}</td>
                           <td>#{idOc}</td>
-                          <td>{venc}</td>
+                          <td>{venc || "—"}</td>
                           <td>
-                            <span style={estiloBadgePorAlerta(nivel)}>{textoDias}</span>
+                            <span className={`erp-status ${badgeClassPorAlerta(nivel)}`}>
+                              {textoDias}
+                            </span>
                           </td>
                           <td>
                             <strong>{formatCurrency(monto)}</strong>
@@ -346,4 +319,3 @@ export default function ReporteCuentasPorPagarPage() {
     </ErpModuleShell>
   );
 }
-

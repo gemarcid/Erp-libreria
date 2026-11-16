@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
+import { useAuth } from "@/components/AuthProvider";
+import { moduleAccessLevel } from "@/lib/module-access";
 import ErpModuleShell from "@/components/ErpModuleShell";
 import ErpIcon from "@/components/ErpIcon";
 import ComprasNav from "@/components/ComprasNav";
@@ -10,6 +12,7 @@ import {
   conciliarFacturaYProgramarPago,
 } from "@/lib/compras-api";
 import { formatCurrency } from "@/lib/compras-format";
+import "../compras.css";
 
 function hoyIso() {
   const d = new Date();
@@ -20,6 +23,9 @@ function hoyIso() {
 }
 
 export default function ConciliacionYPagosPage() {
+  const { usuario } = useAuth();
+  const puedeEditar = usuario ? moduleAccessLevel(usuario, "compras") >= 2 : false;
+
   const [facturasPendientes, setFacturasPendientes] = useState([]);
   const [cargandoLista, setCargandoLista] = useState(true);
   const [errorLista, setErrorLista] = useState("");
@@ -50,6 +56,7 @@ export default function ConciliacionYPagosPage() {
   }, []);
 
   async function handleEvaluarFactura(idFactura) {
+    if (!puedeEditar) return;
     setErrorAccion("");
     setMensajeExito("");
     setEvaluando(true);
@@ -137,7 +144,7 @@ export default function ConciliacionYPagosPage() {
 
   async function handleConfirmarConciliacion(e) {
     e.preventDefault();
-    if (!datosEvaluacion || !datosEvaluacion.cuadra) return;
+    if (!datosEvaluacion || !datosEvaluacion.cuadra || !puedeEditar) return;
 
     setErrorAccion("");
     setMensajeExito("");
@@ -190,22 +197,29 @@ export default function ConciliacionYPagosPage() {
       description="Compara las facturas de proveedor contra la orden de compra y las cantidades efectivamente recibidas en bodega antes de programar su fecha de pago."
       liveData
       subnav={<ComprasNav />}
+      actions={!puedeEditar ? <span className="erp-status warning">Solo lectura</span> : null}
     >
-      <div className="erp-main">
+      <div className="inventory-screen">
+        {!puedeEditar && (
+          <div className="compras-readonly-note" role="status">
+            <ErpIcon name="info" />
+            <span>Solo lectura — Tu perfil puede consultar facturas por conciliar, sin evaluar ni programar pagos.</span>
+          </div>
+        )}
 
         {mensajeExito && (
-          <div className="compras-alert compras-alert--ok" role="status">
+          <div className="ventas-message ventas-message-success" role="status">
             <strong>Conciliación exitosa:</strong> {mensajeExito}
           </div>
         )}
 
         {errorLista && (
-          <div className="compras-alert compras-alert--error" role="alert">
+          <div className="ventas-message ventas-message-error" role="alert">
             <strong>Error:</strong> {errorLista}
           </div>
         )}
 
-        <section className="compras-panel">
+        <section className="erp-card inventory-table-panel">
           <div className="compras-panel-header">
             <div>
               <h2>Facturas por conciliar</h2>
@@ -216,7 +230,7 @@ export default function ConciliacionYPagosPage() {
             </div>
             <button
               type="button"
-              className="compras-btn compras-btn--ghost"
+              className="module-secondary-button"
               onClick={cargarFacturasPendientes}
               disabled={cargandoLista}
             >
@@ -225,14 +239,14 @@ export default function ConciliacionYPagosPage() {
           </div>
 
           {cargandoLista ? (
-            <p className="compras-empty">Cargando facturas por conciliar...</p>
+            <p className="erp-empty">Cargando facturas por conciliar...</p>
           ) : facturasPendientes.length === 0 ? (
-            <div className="compras-empty" role="status">
+            <div className="erp-empty" role="status">
               No hay facturas en estado pendiente de conciliación o con discrepancias en este momento.
             </div>
           ) : (
-            <div className="compras-table-wrap">
-              <table className="compras-table">
+            <div className="module-table-scroll">
+              <table className="module-table">
                 <thead>
                   <tr>
                     <th>ID</th>
@@ -279,24 +293,26 @@ export default function ConciliacionYPagosPage() {
                         </td>
                         <td>
                           <span
-                            className={`compras-badge ${
-                              estado === "con discrepancias"
-                                ? "compras-badge--danger"
-                                : "compras-badge--warning"
+                            className={`erp-status ${
+                              estado === "con discrepancias" ? "danger" : "warning"
                             }`}
                           >
                             {estado}
                           </span>
                         </td>
                         <td>
-                          <button
-                            type="button"
-                            className="compras-btn compras-btn--primary"
-                            onClick={() => handleEvaluarFactura(idFac)}
-                            disabled={evaluando}
-                          >
-                            {seleccionada ? "Reevaluar" : "Evaluar conciliación"}
-                          </button>
+                          {puedeEditar ? (
+                            <button
+                              type="button"
+                              className="module-primary-button"
+                              onClick={() => handleEvaluarFactura(idFac)}
+                              disabled={evaluando}
+                            >
+                              {seleccionada ? "Reevaluar" : "Evaluar conciliación"}
+                            </button>
+                          ) : (
+                            <span className="erp-status neutral">Solo lectura</span>
+                          )}
                         </td>
                       </tr>
                     );
@@ -307,8 +323,8 @@ export default function ConciliacionYPagosPage() {
           )}
         </section>
 
-        {datosEvaluacion && (
-          <section className="compras-panel" style={{ marginTop: "1.5rem" }}>
+        {datosEvaluacion && puedeEditar && (
+          <section className="erp-card inventory-table-panel">
             <div className="compras-panel-header">
               <div>
                 <h2>
@@ -324,7 +340,7 @@ export default function ConciliacionYPagosPage() {
               </div>
               <button
                 type="button"
-                className="compras-btn compras-btn--ghost"
+                className="module-secondary-button"
                 onClick={() => {
                   setEvaluacion(null);
                   setErrorAccion("");
@@ -336,7 +352,7 @@ export default function ConciliacionYPagosPage() {
 
             {errorAccion && (
               <div
-                className="compras-alert compras-alert--error"
+                className="ventas-message ventas-message-error"
                 role="alert"
                 style={{ marginBottom: "1rem" }}
               >
@@ -347,8 +363,8 @@ export default function ConciliacionYPagosPage() {
             <h3 style={{ fontSize: "1rem", marginBottom: "0.5rem" }}>
               1. Detalle por producto (Orden vs Mercancía Recibida)
             </h3>
-            <div className="compras-table-wrap" style={{ marginBottom: "1.25rem" }}>
-              <table className="compras-table">
+            <div className="module-table-scroll" style={{ marginBottom: "1.25rem" }}>
+              <table className="module-table">
                 <thead>
                   <tr>
                     <th>ISBN</th>
@@ -372,10 +388,8 @@ export default function ConciliacionYPagosPage() {
                       <td>{l.recibida}</td>
                       <td>
                         <span
-                          className={`compras-badge ${
-                            l.difCantidad === 0
-                              ? "compras-badge--ok"
-                              : "compras-badge--danger"
+                          className={`erp-status ${
+                            l.difCantidad === 0 ? "success" : "danger"
                           }`}
                         >
                           {l.difCantidad === 0
@@ -398,8 +412,8 @@ export default function ConciliacionYPagosPage() {
               2. Comparación de montos (Factura vs Esperado según recepción — Tolerancia de{" "}
               {formatCurrency(datosEvaluacion.tolerancia)})
             </h3>
-            <div className="compras-table-wrap" style={{ marginBottom: "1.25rem" }}>
-              <table className="compras-table">
+            <div className="module-table-scroll" style={{ marginBottom: "1.25rem" }}>
+              <table className="module-table">
                 <thead>
                   <tr>
                     <th>Concepto</th>
@@ -460,7 +474,7 @@ export default function ConciliacionYPagosPage() {
             </div>
 
             {!datosEvaluacion.cuadra ? (
-              <div className="compras-alert compras-alert--error" role="alert">
+              <div className="ventas-message ventas-message-error" role="alert" style={{ display: "block" }}>
                 <strong>Factura con discrepancias:</strong> La factura ha pasado a estado{" "}
                 <strong>con discrepancias</strong> y no se permite programar su pago.
                 <ul style={{ margin: "0.5rem 0 0", paddingLeft: "1.25rem" }}>
@@ -484,14 +498,9 @@ export default function ConciliacionYPagosPage() {
             ) : (
               <form
                 onSubmit={handleConfirmarConciliacion}
-                style={{
-                  padding: "1.25rem",
-                  borderRadius: "10px",
-                  background: "#f0fdf4",
-                  border: "1px solid #bbf7d0",
-                }}
+                className="compras-summary-box compras-summary-box--ok"
               >
-                <p style={{ marginTop: 0, color: "#166534", fontWeight: 600 }}>
+                <p style={{ marginTop: 0, color: "var(--status-success-text)", fontWeight: 600 }}>
                   La factura cuadra con la orden de compra y la mercancía recibida. Puedes programar
                   su fecha de pago:
                 </p>
@@ -520,12 +529,12 @@ export default function ConciliacionYPagosPage() {
                       required
                     />
                     {datosEvaluacion.fechaAnteriorAHoy && (
-                      <small style={{ color: "#dc2626" }}>
+                      <small style={{ color: "var(--status-danger-text)" }}>
                         La fecha de pago no puede ser anterior a hoy.
                       </small>
                     )}
                     {datosEvaluacion.fechaAnteriorAEmision && (
-                      <small style={{ color: "#dc2626" }}>
+                      <small style={{ color: "var(--status-danger-text)" }}>
                         La fecha de pago no puede ser anterior a la emisión (
                         {datosEvaluacion.fechaEmision}).
                       </small>
@@ -534,7 +543,7 @@ export default function ConciliacionYPagosPage() {
 
                   <button
                     type="submit"
-                    className="compras-btn compras-btn--primary"
+                    className="module-primary-button"
                     disabled={guardando}
                   >
                     {guardando
@@ -550,4 +559,3 @@ export default function ConciliacionYPagosPage() {
     </ErpModuleShell>
   );
 }
-

@@ -5,6 +5,7 @@ import ErpModuleShell from "@/components/ErpModuleShell";
 import ErpIcon from "@/components/ErpIcon";
 import ComprasNav from "@/components/ComprasNav";
 import { fetchProveedores, fetchReporteCumplimientoEntregas } from "@/lib/compras-api";
+import "../../compras.css";
 
 function getHoyISO() {
   const d = new Date();
@@ -112,38 +113,10 @@ export default function ReporteCumplimientoEntregasPage() {
     return { backgroundColor: "#fef2f2", color: "#991b1b" };
   }
 
-  function estiloBadgeEstado(nivel) {
-    if (nivel === "verde") {
-      return {
-        backgroundColor: "#dcfce7",
-        color: "#15803d",
-        border: "1px solid #86efac",
-        padding: "0.2rem 0.55rem",
-        borderRadius: "999px",
-        fontWeight: 600,
-        fontSize: "0.8rem",
-      };
-    }
-    if (nivel === "ambar") {
-      return {
-        backgroundColor: "#fef3c7",
-        color: "#b45309",
-        border: "1px solid #fcd34d",
-        padding: "0.2rem 0.55rem",
-        borderRadius: "999px",
-        fontWeight: 600,
-        fontSize: "0.8rem",
-      };
-    }
-    return {
-      backgroundColor: "#fee2e2",
-      color: "#b91c1c",
-      border: "1px solid #fca5a5",
-      padding: "0.2rem 0.55rem",
-      borderRadius: "999px",
-      fontWeight: 600,
-      fontSize: "0.8rem",
-    };
+  function badgeClassEstado(nivel) {
+    if (nivel === "verde") return "success";
+    if (nivel === "ambar") return "warning";
+    return "danger";
   }
 
   return (
@@ -154,9 +127,8 @@ export default function ReporteCumplimientoEntregasPage() {
       liveData
       subnav={<ComprasNav />}
     >
-      <div className="erp-main">
-
-        <section className="compras-panel" style={{ marginBottom: "1.5rem" }}>
+      <div className="inventory-screen">
+        <section className="erp-card inventory-table-panel">
           <form
             onSubmit={handleGenerar}
             style={{
@@ -176,8 +148,8 @@ export default function ReporteCumplimientoEntregasPage() {
               >
                 <option value="">Todos los proveedores</option>
                 {proveedores.map((p) => {
-                  const id = p.IdProveedor ?? p.id_proveedor ?? p.id;
-                  const razon = p.RazonSocial ?? p.razon_social ?? p.nombre;
+                  const id = p.idProveedor ?? p.IdProveedor ?? p.id_proveedor ?? p.id;
+                  const razon = p.razonSocial ?? p.RazonSocial ?? p.razon_social ?? p.nombre;
                   return (
                     <option key={id} value={id}>
                       {razon}
@@ -212,7 +184,7 @@ export default function ReporteCumplimientoEntregasPage() {
             <div>
               <button
                 type="submit"
-                className="compras-btn compras-btn--primary"
+                className="module-primary-button"
                 disabled={cargando}
               >
                 <ErpIcon name="search" />
@@ -223,20 +195,20 @@ export default function ReporteCumplimientoEntregasPage() {
         </section>
 
         {error && (
-          <div className="compras-alert compras-alert--error" role="alert">
+          <div className="ventas-message ventas-message-error" role="alert">
             <strong>Error:</strong> {error}
           </div>
         )}
 
         {!error && cargando && (
-          <section className="compras-panel">
-            <p className="compras-empty">Calculando indicadores de cumplimiento de entregas...</p>
+          <section className="erp-card inventory-table-panel">
+            <p className="erp-empty">Calculando indicadores de cumplimiento de entregas...</p>
           </section>
         )}
 
         {!error && !cargando && reporte && totalOrdenes === 0 && (
-          <section className="compras-panel">
-            <div className="compras-empty" role="status">
+          <section className="erp-card inventory-table-panel">
+            <div className="erp-empty" role="status">
               No hay órdenes con recepciones o entregas vencidas para los filtros seleccionados
             </div>
           </section>
@@ -245,28 +217,26 @@ export default function ReporteCumplimientoEntregasPage() {
         {!error && !cargando && reporte && totalOrdenes > 0 && (
           <>
             <section
-              className="compras-kpis"
               style={{
                 display: "grid",
                 gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
                 gap: "1rem",
-                marginBottom: "1.5rem",
               }}
             >
-              <article className="compras-kpi-card">
+              <article className="erp-card compras-kpi-card">
                 <span className="compras-kpi-label">% de entregas a tiempo</span>
                 <strong className="compras-kpi-value">{pctATiempoGeneral.toFixed(2)}%</strong>
                 <small>Sobre {totalOrdenes} orden(es) considerada(s)</small>
               </article>
 
-              <article className="compras-kpi-card">
+              <article className="erp-card compras-kpi-card">
                 <span className="compras-kpi-label">% de cumplimiento en cantidad</span>
                 <strong className="compras-kpi-value">{pctCantidadGeneral.toFixed(2)}%</strong>
                 <small>Unidades recibidas / unidades pedidas</small>
               </article>
             </section>
 
-            <section className="compras-panel" style={{ marginBottom: "1.5rem" }}>
+            <section className="erp-card inventory-table-panel">
               <div className="compras-panel-header">
                 <div>
                   <h2>Resumen de cumplimiento por proveedor</h2>
@@ -277,8 +247,8 @@ export default function ReporteCumplimientoEntregasPage() {
                 </div>
               </div>
 
-              <div className="compras-table-wrap">
-                <table className="compras-table">
+              <div className="module-table-scroll">
+                <table className="module-table">
                   <thead>
                     <tr>
                       <th>Proveedor</th>
@@ -321,7 +291,7 @@ export default function ReporteCumplimientoEntregasPage() {
               </div>
             </section>
 
-            <section className="compras-panel">
+            <section className="erp-card inventory-table-panel">
               <div className="compras-panel-header">
                 <div>
                   <h2>Detalle de cumplimiento por orden</h2>
@@ -331,8 +301,8 @@ export default function ReporteCumplimientoEntregasPage() {
                 </div>
               </div>
 
-              <div className="compras-table-wrap">
-                <table className="compras-table">
+              <div className="module-table-scroll">
+                <table className="module-table">
                   <thead>
                     <tr>
                       <th>N° OC</th>
@@ -376,7 +346,9 @@ export default function ReporteCumplimientoEntregasPage() {
                           <td>{recibida}</td>
                           <td>{pct.toFixed(2)}%</td>
                           <td>
-                            <span style={estiloBadgeEstado(nivel)}>{etiquetaEstado}</span>
+                            <span className={`erp-status ${badgeClassEstado(nivel)}`}>
+                              {etiquetaEstado}
+                            </span>
                           </td>
                         </tr>
                       );
@@ -391,4 +363,3 @@ export default function ReporteCumplimientoEntregasPage() {
     </ErpModuleShell>
   );
 }
-

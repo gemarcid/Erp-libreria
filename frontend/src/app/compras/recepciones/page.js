@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
+import { useAuth } from "@/components/AuthProvider";
+import { moduleAccessLevel } from "@/lib/module-access";
 import ErpModuleShell from "@/components/ErpModuleShell";
 import ErpIcon from "@/components/ErpIcon";
 import ComprasNav from "@/components/ComprasNav";
@@ -9,8 +11,12 @@ import {
   fetchDetalleParaRecepcion,
   registrarRecepcion,
 } from "@/lib/compras-api";
+import "../compras.css";
 
 export default function RecepcionMercanciaPage() {
+  const { usuario } = useAuth();
+  const puedeEditar = usuario ? moduleAccessLevel(usuario, "compras") >= 2 : false;
+
   const [ordenesPendientes, setOrdenesPendientes] = useState([]);
   const [cargandoLista, setCargandoLista] = useState(true);
   const [errorLista, setErrorLista] = useState("");
@@ -44,6 +50,7 @@ export default function RecepcionMercanciaPage() {
   }, []);
 
   async function handleSeleccionarOrden(idOc) {
+    if (!puedeEditar) return;
     setErrorFormulario("");
     setMensajeExito("");
     setCargandoDetalle(true);
@@ -56,7 +63,9 @@ export default function RecepcionMercanciaPage() {
       const inicial = {};
       (detalle.Lineas || detalle.lineas || []).forEach((l) => {
         const isbn = l.Isbn ?? l.isbn;
-        const pendiente = Number(l.CantidadPendiente ?? l.cantidad_pendiente ?? 0);
+        const pendiente = Number(
+          l.cantidadPendiente ?? l.CantidadPendiente ?? l.cantidad_pendiente ?? 0
+        );
         inicial[isbn] = pendiente;
       });
       setCantidadesInput(inicial);
@@ -82,9 +91,9 @@ export default function RecepcionMercanciaPage() {
     return (ordenSeleccionada.Lineas || ordenSeleccionada.lineas || []).map((l) => {
       const isbn = l.Isbn ?? l.isbn;
       const titulo = l.Titulo ?? l.titulo;
-      const pedida = Number(l.CantidadPedida ?? l.cantidad_pedida ?? 0);
-      const recibida = Number(l.CantidadRecibida ?? l.cantidad_recibida ?? 0);
-      const pendiente = Number(l.CantidadPendiente ?? l.cantidad_pendiente ?? 0);
+      const pedida = Number(l.cantidadPedida ?? l.CantidadPedida ?? l.cantidad_pedida ?? 0);
+      const recibida = Number(l.cantidadRecibida ?? l.CantidadRecibida ?? l.cantidad_recibida ?? 0);
+      const pendiente = Number(l.cantidadPendiente ?? l.CantidadPendiente ?? l.cantidad_pendiente ?? 0);
       const rawInput = cantidadesInput[isbn];
       const aRecibir = rawInput === "" || rawInput === undefined ? 0 : Number(rawInput);
       const faltanteTrasRecepcion = Math.max(0, pendiente - Math.max(0, aRecibir));
@@ -145,7 +154,7 @@ export default function RecepcionMercanciaPage() {
 
   async function handleConfirmarRecepcion(e) {
     e.preventDefault();
-    if (!ordenSeleccionada) return;
+    if (!ordenSeleccionada || !puedeEditar) return;
 
     setErrorFormulario("");
     setMensajeExito("");
@@ -170,7 +179,7 @@ export default function RecepcionMercanciaPage() {
       return;
     }
 
-    const idOc = ordenSeleccionada.IdOc ?? ordenSeleccionada.id_oc;
+    const idOc = ordenSeleccionada.idOc ?? ordenSeleccionada.IdOc ?? ordenSeleccionada.id_oc;
     const payload = {
       id_oc: idOc,
       tipo_doc: tipoDoc,
@@ -206,22 +215,29 @@ export default function RecepcionMercanciaPage() {
       description="Selecciona una orden de compra aprobada o con recepción parcial, verifica las cantidades recibidas por producto y confirma el ingreso al inventario."
       liveData
       subnav={<ComprasNav />}
+      actions={!puedeEditar ? <span className="erp-status warning">Solo lectura</span> : null}
     >
-      <div className="erp-main">
+      <div className="inventory-screen">
+        {!puedeEditar && (
+          <div className="compras-readonly-note" role="status">
+            <ErpIcon name="info" />
+            <span>Solo lectura — Tu perfil puede consultar recepciones pendientes, sin registrar ingresos.</span>
+          </div>
+        )}
 
         {mensajeExito && (
-          <div className="compras-alert compras-alert--ok" role="status">
+          <div className="ventas-message ventas-message-success" role="status">
             <strong>Recepción confirmada:</strong> {mensajeExito}
           </div>
         )}
 
         {errorLista && (
-          <div className="compras-alert compras-alert--error" role="alert">
+          <div className="ventas-message ventas-message-error" role="alert">
             <strong>Error:</strong> {errorLista}
           </div>
         )}
 
-        <section className="compras-panel">
+        <section className="erp-card inventory-table-panel">
           <div className="compras-panel-header">
             <div>
               <h2>Órdenes pendientes de recepción</h2>
@@ -232,7 +248,7 @@ export default function RecepcionMercanciaPage() {
             </div>
             <button
               type="button"
-              className="compras-btn compras-btn--ghost"
+              className="module-secondary-button"
               onClick={cargarOrdenesPendientes}
               disabled={cargandoLista}
             >
@@ -241,14 +257,14 @@ export default function RecepcionMercanciaPage() {
           </div>
 
           {cargandoLista ? (
-            <p className="compras-empty">Cargando órdenes pendientes de recepción...</p>
+            <p className="erp-empty">Cargando órdenes pendientes de recepción...</p>
           ) : ordenesPendientes.length === 0 ? (
-            <div className="compras-empty" role="status">
+            <div className="erp-empty" role="status">
               No hay órdenes de compra pendientes de recepción en este momento.
             </div>
           ) : (
-            <div className="compras-table-wrap">
-              <table className="compras-table">
+            <div className="module-table-scroll">
+              <table className="module-table">
                 <thead>
                   <tr>
                     <th>N° Orden</th>
@@ -262,18 +278,19 @@ export default function RecepcionMercanciaPage() {
                 </thead>
                 <tbody>
                   {ordenesPendientes.map((oc) => {
-                    const idOc = oc.IdOc ?? oc.id_oc;
-                    const prov = oc.ProveedorNombre ?? oc.proveedor;
+                    const idOc = oc.idOc ?? oc.IdOc ?? oc.id_oc;
+                    const prov = oc.proveedorNombre ?? oc.ProveedorNombre ?? oc.proveedor;
                     const estado = (oc.Estado ?? oc.estado ?? "aprobada").toLowerCase();
                     const fecha = oc.Fecha ?? oc.fecha;
-                    const entrega = oc.FechaEntrega ?? oc.fecha_entrega ?? "—";
+                    const entrega = oc.fechaEntrega ?? oc.FechaEntrega ?? oc.fecha_entrega ?? "—";
                     const lineas = oc.Lineas || oc.lineas || [];
                     const totalPendienteOc = lineas.reduce(
-                      (acc, l) => acc + Number(l.CantidadPendiente ?? l.cantidad_pendiente ?? 0),
+                      (acc, l) =>
+                        acc + Number(l.cantidadPendiente ?? l.CantidadPendiente ?? l.cantidad_pendiente ?? 0),
                       0
                     );
                     const seleccionada =
-                      (ordenSeleccionada?.IdOc ?? ordenSeleccionada?.id_oc) === idOc;
+                      (ordenSeleccionada?.idOc ?? ordenSeleccionada?.IdOc ?? ordenSeleccionada?.id_oc) === idOc;
 
                     return (
                       <tr key={idOc} className={seleccionada ? "is-selected" : ""}>
@@ -285,10 +302,8 @@ export default function RecepcionMercanciaPage() {
                         <td>{entrega}</td>
                         <td>
                           <span
-                            className={`compras-badge ${
-                              estado === "recibida parcial"
-                                ? "compras-badge--warning"
-                                : "compras-badge--info"
+                            className={`erp-status ${
+                              estado === "recibida parcial" ? "warning" : "neutral"
                             }`}
                           >
                             {estado === "recibida parcial" ? "Recibida parcial" : "Aprobada"}
@@ -296,14 +311,18 @@ export default function RecepcionMercanciaPage() {
                         </td>
                         <td>{totalPendienteOc} u.</td>
                         <td>
-                          <button
-                            type="button"
-                            className="compras-btn compras-btn--primary"
-                            onClick={() => handleSeleccionarOrden(idOc)}
-                            disabled={cargandoDetalle}
-                          >
-                            {seleccionada ? "Seleccionada" : "Recibir mercancía"}
-                          </button>
+                          {puedeEditar ? (
+                            <button
+                              type="button"
+                              className="module-primary-button"
+                              onClick={() => handleSeleccionarOrden(idOc)}
+                              disabled={cargandoDetalle}
+                            >
+                              {seleccionada ? "Seleccionada" : "Recibir mercancía"}
+                            </button>
+                          ) : (
+                            <span className="erp-status neutral">Solo lectura</span>
+                          )}
                         </td>
                       </tr>
                     );
@@ -314,17 +333,17 @@ export default function RecepcionMercanciaPage() {
           )}
         </section>
 
-        {ordenSeleccionada && (
-          <section className="compras-panel" style={{ marginTop: "1.5rem" }}>
+        {ordenSeleccionada && puedeEditar && (
+          <section className="erp-card inventory-table-panel">
             <div className="compras-panel-header">
               <div>
                 <h2>
-                  Registrar recepción — Orden #{ordenSeleccionada.IdOc ?? ordenSeleccionada.id_oc}
+                  Registrar recepción — Orden #{ordenSeleccionada.idOc ?? ordenSeleccionada.IdOc ?? ordenSeleccionada.id_oc}
                 </h2>
                 <p>
                   Proveedor:{" "}
                   <strong>
-                    {ordenSeleccionada.ProveedorNombre ?? ordenSeleccionada.proveedor}
+                    {ordenSeleccionada.proveedorNombre ?? ordenSeleccionada.ProveedorNombre ?? ordenSeleccionada.proveedor}
                   </strong>{" "}
                   · Estado actual:{" "}
                   <strong>{ordenSeleccionada.Estado ?? ordenSeleccionada.estado}</strong>
@@ -332,7 +351,7 @@ export default function RecepcionMercanciaPage() {
               </div>
               <button
                 type="button"
-                className="compras-btn compras-btn--ghost"
+                className="module-secondary-button"
                 onClick={() => {
                   setOrdenSeleccionada(null);
                   setErrorFormulario("");
@@ -344,7 +363,7 @@ export default function RecepcionMercanciaPage() {
 
             {errorFormulario && (
               <div
-                className="compras-alert compras-alert--error"
+                className="ventas-message ventas-message-error"
                 role="alert"
                 style={{ marginBottom: "1rem" }}
               >
@@ -389,8 +408,8 @@ export default function RecepcionMercanciaPage() {
                 </div>
               </div>
 
-              <div className="compras-table-wrap">
-                <table className="compras-table">
+              <div className="module-table-scroll">
+                <table className="module-table">
                   <thead>
                     <tr>
                       <th>ISBN</th>
@@ -444,10 +463,8 @@ export default function RecepcionMercanciaPage() {
                         </td>
                         <td>
                           <span
-                            className={`compras-badge ${
-                              linea.faltanteTrasRecepcion > 0
-                                ? "compras-badge--warning"
-                                : "compras-badge--ok"
+                            className={`erp-status ${
+                              linea.faltanteTrasRecepcion > 0 ? "warning" : "success"
                             }`}
                           >
                             {linea.faltanteTrasRecepcion > 0
@@ -461,15 +478,7 @@ export default function RecepcionMercanciaPage() {
                 </table>
               </div>
 
-              <div
-                style={{
-                  marginTop: "1.25rem",
-                  padding: "1rem 1.25rem",
-                  borderRadius: "10px",
-                  background: "#f8fafc",
-                  border: "1px solid #e2e8f0",
-                }}
-              >
+              <div className="compras-summary-box" style={{ marginTop: "1.25rem" }}>
                 <h3 style={{ marginTop: 0, marginBottom: "0.5rem", fontSize: "1rem" }}>
                   Resumen de recepción y faltantes
                 </h3>
@@ -491,7 +500,7 @@ export default function RecepcionMercanciaPage() {
                     ))}
                   </ul>
                 ) : (
-                  <p style={{ margin: "0.25rem 0", color: "#15803d", fontWeight: 600 }}>
+                  <p style={{ margin: "0.25rem 0", color: "var(--status-success-text)", fontWeight: 600 }}>
                     No quedarán productos faltantes en esta orden.
                   </p>
                 )}
@@ -513,7 +522,7 @@ export default function RecepcionMercanciaPage() {
               >
                 <button
                   type="submit"
-                  className="compras-btn compras-btn--primary"
+                  className="module-primary-button"
                   disabled={
                     guardando ||
                     resumenRecepcion.hayExceso ||
@@ -531,4 +540,3 @@ export default function RecepcionMercanciaPage() {
     </ErpModuleShell>
   );
 }
-

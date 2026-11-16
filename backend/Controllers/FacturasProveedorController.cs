@@ -35,7 +35,7 @@ namespace backend.Controllers
                         INNER JOIN DETALLE_OC doc ON oc.id_oc = doc.id_oc
                         INNER JOIN LIBRO l ON doc.isbn = l.isbn
                         LEFT JOIN FACTURA_PROVEEDOR fp ON fp.id_oc = oc.id_oc
-                        WHERE oc.estado IN ('recibida parcial', 'recibida')
+                        WHERE oc.estado = 'recibida'
                           AND fp.id_factura IS NULL
                         ORDER BY oc.id_oc DESC, l.titulo";
 
@@ -241,7 +241,26 @@ namespace backend.Controllers
                                 }
                             }
 
-                            // 2. Verificar si ya existe una factura con el mismo número para ese proveedor
+                            // 2. Validar estado de la orden: solo se permiten órdenes en estado 'recibida'
+                            if (string.Equals(estadoOc, "recibida parcial", StringComparison.OrdinalIgnoreCase))
+                            {
+                                trans.Rollback();
+                                return Content(HttpStatusCode.Conflict, new
+                                {
+                                    error = "Solo se pueden facturar órdenes recibidas completamente"
+                                });
+                            }
+
+                            if (!string.Equals(estadoOc, "recibida", StringComparison.OrdinalIgnoreCase))
+                            {
+                                trans.Rollback();
+                                return Content(HttpStatusCode.Conflict, new
+                                {
+                                    error = $"La orden #{dto.IdOc} está en estado '{estadoOc}'. Solo se pueden registrar facturas para órdenes en estado 'recibida'."
+                                });
+                            }
+
+                            // 3. Verificar si ya existe una factura con el mismo número para ese proveedor
                             const string checkDupNroSql = @"
                                 SELECT fp.id_factura, fp.id_oc, oc.id_proveedor, p.razon_social,
                                        fp.nro_factura, fp.fecha_emision, fp.fecha_vencimiento, fp.fecha_pago,
@@ -274,7 +293,7 @@ namespace backend.Controllers
                                 }
                             }
 
-                            // 3. Verificar si la orden ya tiene otra factura asociada (una factura por orden)
+                            // 4. Verificar si la orden ya tiene otra factura asociada (una factura por orden)
                             const string checkDupOcSql = @"
                                 SELECT fp.id_factura, fp.id_oc, oc.id_proveedor, p.razon_social,
                                        fp.nro_factura, fp.fecha_emision, fp.fecha_vencimiento, fp.fecha_pago,
@@ -303,16 +322,6 @@ namespace backend.Controllers
                                         });
                                     }
                                 }
-                            }
-
-                            // 4. Validar estado de la orden ('recibida parcial' o 'recibida')
-                            if (estadoOc != "recibida parcial" && estadoOc != "recibida")
-                            {
-                                trans.Rollback();
-                                return Content(HttpStatusCode.Conflict, new
-                                {
-                                    error = $"La orden #{dto.IdOc} está en estado '{estadoOc}'. Solo se pueden registrar facturas para órdenes en estado 'recibida parcial' o 'recibida'."
-                                });
                             }
 
                             // 5. Insertar la factura con estado 'pendiente de conciliacion'

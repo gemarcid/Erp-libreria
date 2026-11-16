@@ -92,8 +92,8 @@ export default function ProveedoresPage() {
     }
   }, [authLoading, usuario, authError, router]);
 
-  const nivelAcceso = usuario ? moduleAccessLevel(usuario, "compras") : "none";
-  const puedeEditar = nivelAcceso === "edit";
+  const nivelAcceso = usuario ? moduleAccessLevel(usuario, "compras") : 0;
+  const puedeEditar = nivelAcceso >= 2;
 
   const cargarCategorias = useCallback(async () => {
     if (!usuario) return;
@@ -271,46 +271,34 @@ export default function ProveedoresPage() {
     }
   };
 
-  if (authLoading) {
-    return <p className="erp-empty">Verificando sesión…</p>;
-  }
-
-  if (!usuario) return null;
-
   return (
     <ErpModuleShell
-      usuario={usuario}
-      activeSection="compras"
-      eyebrow="Adquisiciones y Abastecimiento"
+      module="compras"
       title="Catálogo de Proveedores"
       description="Registra, edita y consulta proveedores, sus condiciones comerciales, cupos de crédito y categorías suministradas."
+      liveData
       subnav={<ComprasNav />}
       actions={
         puedeEditar ? (
           <button
             type="button"
-            className="ventas-ShiftButton"
-            style={{
-              backgroundColor: "var(--color-primary)",
-              color: "#fff",
-              border: "none",
-              padding: "10px 18px",
-              borderRadius: "8px",
-              fontWeight: 600,
-              cursor: "pointer",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "8px",
-            }}
+            className="module-primary-button"
             onClick={abrirModalNuevo}
           >
             <ErpIcon name="plus" />
             Nuevo proveedor
           </button>
-        ) : null
+        ) : (
+          <span className="erp-status warning">Solo lectura</span>
+        )
       }
     >
-      <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+      <div className="inventory-screen" style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+        {!puedeEditar && (
+          <p className="erp-status warning" role="status" style={{ width: "fit-content", fontSize: "12px", padding: "6px 12px" }}>
+            Solo lectura — Tu perfil no tiene permisos de edición en Compras.
+          </p>
+        )}
         {errorGeneral && (
           <p className="ventas-message ventas-message-error" role="alert">
             {errorGeneral}
@@ -515,7 +503,7 @@ export default function ProveedoresPage() {
                           )}
                         </td>
                         <td style={{ textAlign: "center" }}>
-                          <span className={`erp-status ${activo ? "erp-status-ok" : "erp-status-danger"}`}>
+                          <span className={`erp-status ${activo ? "success" : "danger"}`}>
                             {activo ? "Activo" : "Inactivo"}
                           </span>
                         </td>

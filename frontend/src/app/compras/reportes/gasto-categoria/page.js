@@ -6,6 +6,7 @@ import ErpIcon from "@/components/ErpIcon";
 import ComprasNav from "@/components/ComprasNav";
 import { fetchReporteGastoCategoria } from "@/lib/compras-api";
 import { formatCurrency } from "@/lib/compras-format";
+import "../../compras.css";
 
 function getHoyISO() {
   const d = new Date();
@@ -109,9 +110,8 @@ export default function ReporteGastoCategoriaPage() {
       liveData
       subnav={<ComprasNav />}
     >
-      <div className="erp-main">
-
-        <section className="compras-panel" style={{ marginBottom: "1.5rem" }}>
+      <div className="inventory-screen">
+        <section className="erp-card inventory-table-panel">
           <form
             onSubmit={handleGenerar}
             style={{
@@ -163,7 +163,7 @@ export default function ReporteGastoCategoriaPage() {
             <div>
               <button
                 type="submit"
-                className="compras-btn compras-btn--primary"
+                className="module-primary-button"
                 disabled={cargando}
               >
                 <ErpIcon name="search" />
@@ -174,20 +174,20 @@ export default function ReporteGastoCategoriaPage() {
         </section>
 
         {error && (
-          <div className="compras-alert compras-alert--error" role="alert">
+          <div className="ventas-message ventas-message-error" role="alert">
             <strong>Error:</strong> {error}
           </div>
         )}
 
         {!error && cargando && (
-          <section className="compras-panel">
-            <p className="compras-empty">Calculando gasto por categoría...</p>
+          <section className="erp-card inventory-table-panel">
+            <p className="erp-empty">Calculando gasto por categoría...</p>
           </section>
         )}
 
         {!error && !cargando && reporte && categorias.length === 0 && (
-          <section className="compras-panel">
-            <div className="compras-empty" role="status">
+          <section className="erp-card inventory-table-panel">
+            <div className="erp-empty" role="status">
               No hay compras registradas con esos filtros
             </div>
           </section>
@@ -196,16 +196,7 @@ export default function ReporteGastoCategoriaPage() {
         {!error && !cargando && reporte && categorias.length > 0 && (
           <>
             {haySinCategoria && (
-              <div
-                className="compras-alert"
-                role="alert"
-                style={{
-                  backgroundColor: "#fffbeb",
-                  border: "1px solid #fcd34d",
-                  color: "#92400e",
-                  marginBottom: "1.25rem",
-                }}
-              >
+              <div className="compras-alert-warning" role="alert">
                 <strong>Advertencia:</strong> Existen compras de libros agrupados como{" "}
                 <strong>Sin categoría</strong> (incluidos en el total). Se recomienda asignarles una
                 categoría en el catálogo de libros.
@@ -213,15 +204,13 @@ export default function ReporteGastoCategoriaPage() {
             )}
 
             <section
-              className="compras-kpis"
               style={{
                 display: "grid",
                 gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
                 gap: "1rem",
-                marginBottom: "1.5rem",
               }}
             >
-              <article className="compras-kpi-card">
+              <article className="erp-card compras-kpi-card">
                 <span className="compras-kpi-label">Gasto total del período</span>
                 <strong className="compras-kpi-value">{formatCurrency(gastoTotal)}</strong>
                 <small>
@@ -230,7 +219,7 @@ export default function ReporteGastoCategoriaPage() {
                 </small>
               </article>
 
-              <article className="compras-kpi-card">
+              <article className="erp-card compras-kpi-card">
                 <span className="compras-kpi-label">Categoría con mayor gasto</span>
                 <strong className="compras-kpi-value">{catMayor}</strong>
                 <small>
@@ -239,7 +228,7 @@ export default function ReporteGastoCategoriaPage() {
               </article>
             </section>
 
-            <section className="compras-panel" style={{ marginBottom: "1.5rem" }}>
+            <section className="erp-card inventory-table-panel">
               <div className="compras-panel-header">
                 <div>
                   <h2>Distribución de monto por categoría</h2>
@@ -274,8 +263,8 @@ export default function ReporteGastoCategoriaPage() {
                       <div
                         style={{
                           width: "100%",
-                          height: "12px",
-                          backgroundColor: "#e2e8f0",
+                          height: "14px",
+                          backgroundColor: "#f5eaea",
                           borderRadius: "999px",
                           overflow: "hidden",
                         }}
@@ -284,7 +273,7 @@ export default function ReporteGastoCategoriaPage() {
                           style={{
                             width: `${anchoPct}%`,
                             height: "100%",
-                            backgroundColor: "#2563eb",
+                            backgroundColor: "var(--color-primary)",
                             borderRadius: "999px",
                           }}
                         />
@@ -295,7 +284,7 @@ export default function ReporteGastoCategoriaPage() {
               </div>
             </section>
 
-            <section className="compras-panel">
+            <section className="erp-card inventory-table-panel">
               <div className="compras-panel-header">
                 <div>
                   <h2>Detalle de rotación y gasto por categoría</h2>
@@ -303,8 +292,8 @@ export default function ReporteGastoCategoriaPage() {
                 </div>
               </div>
 
-              <div className="compras-table-wrap">
-                <table className="compras-table">
+              <div className="module-table-scroll">
+                <table className="module-table">
                   <thead>
                     <tr>
                       <th>Categoría</th>
@@ -350,4 +339,3 @@ export default function ReporteGastoCategoriaPage() {
     </ErpModuleShell>
   );
 }
-

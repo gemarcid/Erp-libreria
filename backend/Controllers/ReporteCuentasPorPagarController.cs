@@ -63,8 +63,8 @@ namespace backend.Controllers
                         SELECT
                             COUNT(*) AS total_facturas,
                             COALESCE(SUM(fp.monto_total), 0) AS total_pendiente_pago,
-                            COALESCE(SUM(CASE WHEN DATEDIFF(fp.fecha_vencimiento, @fecha_corte) > 7 THEN 1 ELSE 0 END), 0) AS cant_vigentes,
-                            COALESCE(SUM(CASE WHEN DATEDIFF(fp.fecha_vencimiento, @fecha_corte) > 7 THEN fp.monto_total ELSE 0 END), 0) AS monto_vigentes,
+                            COALESCE(SUM(CASE WHEN fp.fecha_vencimiento IS NULL OR DATEDIFF(fp.fecha_vencimiento, @fecha_corte) > 7 THEN 1 ELSE 0 END), 0) AS cant_vigentes,
+                            COALESCE(SUM(CASE WHEN fp.fecha_vencimiento IS NULL OR DATEDIFF(fp.fecha_vencimiento, @fecha_corte) > 7 THEN fp.monto_total ELSE 0 END), 0) AS monto_vigentes,
                             COALESCE(SUM(CASE WHEN DATEDIFF(fp.fecha_vencimiento, @fecha_corte) BETWEEN 0 AND 7 THEN 1 ELSE 0 END), 0) AS cant_por_vencer,
                             COALESCE(SUM(CASE WHEN DATEDIFF(fp.fecha_vencimiento, @fecha_corte) BETWEEN 0 AND 7 THEN fp.monto_total ELSE 0 END), 0) AS monto_por_vencer,
                             COALESCE(SUM(CASE WHEN DATEDIFF(@fecha_corte, fp.fecha_vencimiento) BETWEEN 1 AND 30 THEN 1 ELSE 0 END), 0) AS cant_venc_1_30,
@@ -151,11 +151,11 @@ namespace backend.Controllers
                             fp.fecha_pago,
                             fp.monto_total,
                             fp.estado_pago,
-                            DATEDIFF(fp.fecha_vencimiento, @fecha_corte) AS dias_diferencia,
-                            GREATEST(0, DATEDIFF(@fecha_corte, fp.fecha_vencimiento)) AS dias_atraso,
-                            GREATEST(0, DATEDIFF(fp.fecha_vencimiento, @fecha_corte)) AS dias_para_vencer,
+                            COALESCE(DATEDIFF(fp.fecha_vencimiento, @fecha_corte), 0) AS dias_diferencia,
+                            COALESCE(GREATEST(0, DATEDIFF(@fecha_corte, fp.fecha_vencimiento)), 0) AS dias_atraso,
+                            COALESCE(GREATEST(0, DATEDIFF(fp.fecha_vencimiento, @fecha_corte)), 0) AS dias_para_vencer,
                             CASE
-                                WHEN DATEDIFF(fp.fecha_vencimiento, @fecha_corte) > 7 THEN 'vigentes'
+                                WHEN fp.fecha_vencimiento IS NULL OR DATEDIFF(fp.fecha_vencimiento, @fecha_corte) > 7 THEN 'vigentes'
                                 WHEN DATEDIFF(fp.fecha_vencimiento, @fecha_corte) BETWEEN 0 AND 7 THEN 'por_vencer'
                                 WHEN DATEDIFF(@fecha_corte, fp.fecha_vencimiento) BETWEEN 1 AND 30 THEN 'vencidas_1_30'
                                 WHEN DATEDIFF(@fecha_corte, fp.fecha_vencimiento) BETWEEN 31 AND 60 THEN 'vencidas_31_60'
@@ -163,7 +163,7 @@ namespace backend.Controllers
                                 ELSE 'vencidas_mas_90'
                             END AS tramo_codigo,
                             CASE
-                                WHEN DATEDIFF(fp.fecha_vencimiento, @fecha_corte) > 7 THEN 'Vigentes'
+                                WHEN fp.fecha_vencimiento IS NULL OR DATEDIFF(fp.fecha_vencimiento, @fecha_corte) > 7 THEN 'Vigentes'
                                 WHEN DATEDIFF(fp.fecha_vencimiento, @fecha_corte) BETWEEN 0 AND 7 THEN 'Por vencer'
                                 WHEN DATEDIFF(@fecha_corte, fp.fecha_vencimiento) BETWEEN 1 AND 30 THEN 'Vencidas 1 a 30 días'
                                 WHEN DATEDIFF(@fecha_corte, fp.fecha_vencimiento) BETWEEN 31 AND 60 THEN 'Vencidas 31 a 60 días'
@@ -171,7 +171,7 @@ namespace backend.Controllers
                                 ELSE 'Vencidas más de 90 días'
                             END AS tramo_etiqueta,
                             CASE
-                                WHEN DATEDIFF(fp.fecha_vencimiento, @fecha_corte) > 7 THEN 'verde'
+                                WHEN fp.fecha_vencimiento IS NULL OR DATEDIFF(fp.fecha_vencimiento, @fecha_corte) > 7 THEN 'verde'
                                 WHEN DATEDIFF(fp.fecha_vencimiento, @fecha_corte) BETWEEN 0 AND 7 THEN 'ambar'
                                 ELSE 'rojo'
                             END AS nivel_alerta
@@ -180,7 +180,7 @@ namespace backend.Controllers
                         INNER JOIN PROVEEDOR p ON oc.id_proveedor = p.id_proveedor
                         WHERE fp.estado_pago <> 'pagada'
                           AND (@id_proveedor IS NULL OR oc.id_proveedor = @id_proveedor)
-                        ORDER BY fp.fecha_vencimiento ASC, fp.id_factura ASC";
+                        ORDER BY CASE WHEN fp.fecha_vencimiento IS NULL THEN 1 ELSE 0 END ASC, fp.fecha_vencimiento ASC, fp.id_factura ASC";
 
                     using (var cmdDetalle = new MySqlCommand(sqlDetalle, conn))
                     {
@@ -199,13 +199,15 @@ namespace backend.Controllers
                                     ProveedorNombre = reader["razon_social"].ToString(),
                                     NroFactura = reader["nro_factura"].ToString(),
                                     FechaEmision = Convert.ToDateTime(reader["fecha_emision"]).ToString("yyyy-MM-dd"),
-                                    FechaVencimiento = Convert.ToDateTime(reader["fecha_vencimiento"]).ToString("yyyy-MM-dd"),
+                                    FechaVencimiento = reader["fecha_vencimiento"] != DBNull.Value
+                                        ? Convert.ToDateTime(reader["fecha_vencimiento"]).ToString("yyyy-MM-dd")
+                                        : "—",
                                     FechaPagoProgramada = reader["fecha_pago"] != DBNull.Value
                                         ? Convert.ToDateTime(reader["fecha_pago"]).ToString("yyyy-MM-dd")
                                         : null,
-                                    DiasDiferencia = Convert.ToInt32(reader["dias_diferencia"]),
-                                    DiasAtraso = Convert.ToInt32(reader["dias_atraso"]),
-                                    DiasParaVencer = Convert.ToInt32(reader["dias_para_vencer"]),
+                                    DiasDiferencia = reader["dias_diferencia"] != DBNull.Value ? Convert.ToInt32(reader["dias_diferencia"]) : 0,
+                                    DiasAtraso = reader["dias_atraso"] != DBNull.Value ? Convert.ToInt32(reader["dias_atraso"]) : 0,
+                                    DiasParaVencer = reader["dias_para_vencer"] != DBNull.Value ? Convert.ToInt32(reader["dias_para_vencer"]) : 0,
                                     TramoCodigo = reader["tramo_codigo"].ToString(),
                                     TramoEtiqueta = reader["tramo_etiqueta"].ToString(),
                                     NivelAlerta = reader["nivel_alerta"].ToString(),

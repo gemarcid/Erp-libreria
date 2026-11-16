@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
+import { useAuth } from "@/components/AuthProvider";
+import { moduleAccessLevel } from "@/lib/module-access";
 import ErpModuleShell from "@/components/ErpModuleShell";
 import ErpIcon from "@/components/ErpIcon";
 import ComprasNav from "@/components/ComprasNav";
@@ -10,6 +12,7 @@ import {
   registrarFacturaProveedor,
 } from "@/lib/compras-api";
 import { formatCurrency } from "@/lib/compras-format";
+import "../compras.css";
 
 function hoyIso() {
   const d = new Date();
@@ -31,6 +34,9 @@ function sumarDiasIso(fechaIso, dias = 30) {
 }
 
 export default function FacturasProveedorPage() {
+  const { usuario } = useAuth();
+  const puedeEditar = usuario ? moduleAccessLevel(usuario, "compras") >= 2 : false;
+
   const [ordenesPendientes, setOrdenesPendientes] = useState([]);
   const [facturasRegistradas, setFacturasRegistradas] = useState([]);
   const [cargando, setCargando] = useState(true);
@@ -70,6 +76,7 @@ export default function FacturasProveedorPage() {
   }, []);
 
   function handleSeleccionarOrden(oc) {
+    if (!puedeEditar) return;
     setOrdenSeleccionada(oc);
     setErrorFormulario("");
     setFacturaDuplicada(null);
@@ -113,7 +120,7 @@ export default function FacturasProveedorPage() {
 
   async function handleConfirmarFactura(e) {
     e.preventDefault();
-    if (!ordenSeleccionada) return;
+    if (!ordenSeleccionada || !puedeEditar) return;
 
     setErrorFormulario("");
     setFacturaDuplicada(null);
@@ -182,36 +189,42 @@ export default function FacturasProveedorPage() {
     <ErpModuleShell
       module="compras"
       title="Facturas de proveedor"
-      description="Selecciona una orden de compra recibida (total o parcialmente) pendiente de facturar, verifica o ajusta los montos neto e IVA y registra la factura para su conciliación."
+      description="Selecciona una orden de compra recibida completamente pendiente de facturar, verifica o ajusta los montos neto e IVA y registra la factura para su conciliación."
       liveData
       subnav={<ComprasNav />}
+      actions={!puedeEditar ? <span className="erp-status warning">Solo lectura</span> : null}
     >
-      <div className="erp-main">
+      <div className="inventory-screen">
+        {!puedeEditar && (
+          <div className="compras-readonly-note" role="status">
+            <ErpIcon name="info" />
+            <span>Solo lectura — Tu perfil puede consultar órdenes y facturas, sin registrar nuevas facturas.</span>
+          </div>
+        )}
 
         {mensajeExito && (
-          <div className="compras-alert compras-alert--ok" role="status">
+          <div className="ventas-message ventas-message-success" role="status">
             <strong>Factura registrada:</strong> {mensajeExito}
           </div>
         )}
 
         {errorCarga && (
-          <div className="compras-alert compras-alert--error" role="alert">
+          <div className="ventas-message ventas-message-error" role="alert">
             <strong>Error:</strong> {errorCarga}
           </div>
         )}
 
-        <section className="compras-panel">
+        <section className="erp-card inventory-table-panel">
           <div className="compras-panel-header">
             <div>
               <h2>Órdenes pendientes de facturar</h2>
               <p>
-                Órdenes en estado <strong>Recibida parcial</strong> o <strong>Recibida</strong> que
-                aún no tienen factura asociada.
+                Órdenes en estado <strong>Recibida</strong> que aún no tienen factura asociada.
               </p>
             </div>
             <button
               type="button"
-              className="compras-btn compras-btn--ghost"
+              className="module-secondary-button"
               onClick={cargarDatos}
               disabled={cargando}
             >
@@ -220,14 +233,14 @@ export default function FacturasProveedorPage() {
           </div>
 
           {cargando ? (
-            <p className="compras-empty">Cargando órdenes pendientes de facturar...</p>
+            <p className="erp-empty">Cargando órdenes pendientes de facturar...</p>
           ) : ordenesPendientes.length === 0 ? (
-            <div className="compras-empty" role="status">
-              No hay órdenes en estado recibida o recibida parcial pendientes de facturar.
+            <div className="erp-empty" role="status">
+              No hay órdenes en estado recibida pendientes de facturar.
             </div>
           ) : (
-            <div className="compras-table-wrap">
-              <table className="compras-table">
+            <div className="module-table-scroll">
+              <table className="module-table">
                 <thead>
                   <tr>
                     <th>N° Orden</th>
@@ -247,7 +260,6 @@ export default function FacturasProveedorPage() {
                     const prov = oc.ProveedorNombre ?? oc.proveedor;
                     const rut = oc.ProveedorRut ?? oc.proveedor_rut ?? "—";
                     const fecha = oc.FechaOrden ?? oc.fecha_orden;
-                    const estado = (oc.Estado ?? oc.estado ?? "").toLowerCase();
                     const netoSug = Number(oc.NetoSugerido ?? oc.neto_sugerido ?? 0);
                     const ivaSug = Number(oc.IvaSugerido ?? oc.iva_sugerido ?? 0);
                     const totalOc = Number(oc.TotalOrden ?? oc.total_orden ?? 0);
@@ -263,15 +275,7 @@ export default function FacturasProveedorPage() {
                         <td>{rut}</td>
                         <td>{fecha}</td>
                         <td>
-                          <span
-                            className={`compras-badge ${
-                              estado === "recibida"
-                                ? "compras-badge--ok"
-                                : "compras-badge--warning"
-                            }`}
-                          >
-                            {estado === "recibida" ? "Recibida" : "Recibida parcial"}
-                          </span>
+                          <span className="erp-status success">Recibida</span>
                         </td>
                         <td>{formatCurrency(netoSug)}</td>
                         <td>{formatCurrency(ivaSug)}</td>
@@ -279,13 +283,17 @@ export default function FacturasProveedorPage() {
                           <strong>{formatCurrency(totalOc)}</strong>
                         </td>
                         <td>
-                          <button
-                            type="button"
-                            className="compras-btn compras-btn--primary"
-                            onClick={() => handleSeleccionarOrden(oc)}
-                          >
-                            {seleccionada ? "Seleccionada" : "Registrar factura"}
-                          </button>
+                          {puedeEditar ? (
+                            <button
+                              type="button"
+                              className="module-primary-button"
+                              onClick={() => handleSeleccionarOrden(oc)}
+                            >
+                              {seleccionada ? "Seleccionada" : "Registrar factura"}
+                            </button>
+                          ) : (
+                            <span className="erp-status neutral">Solo lectura</span>
+                          )}
                         </td>
                       </tr>
                     );
@@ -296,8 +304,8 @@ export default function FacturasProveedorPage() {
           )}
         </section>
 
-        {ordenSeleccionada && (
-          <section className="compras-panel" style={{ marginTop: "1.5rem" }}>
+        {ordenSeleccionada && puedeEditar && (
+          <section className="erp-card inventory-table-panel">
             <div className="compras-panel-header">
               <div>
                 <h2>
@@ -323,7 +331,7 @@ export default function FacturasProveedorPage() {
               </div>
               <button
                 type="button"
-                className="compras-btn compras-btn--ghost"
+                className="module-secondary-button"
                 onClick={() => {
                   setOrdenSeleccionada(null);
                   setErrorFormulario("");
@@ -336,9 +344,9 @@ export default function FacturasProveedorPage() {
 
             {errorFormulario && (
               <div
-                className="compras-alert compras-alert--error"
+                className="ventas-message ventas-message-error"
                 role="alert"
-                style={{ marginBottom: "1rem" }}
+                style={{ marginBottom: "1rem", display: "block" }}
               >
                 <strong>Error:</strong> {errorFormulario}
                 {facturaDuplicada && (
@@ -348,8 +356,8 @@ export default function FacturasProveedorPage() {
                       padding: "0.75rem",
                       background: "#fff",
                       borderRadius: "8px",
-                      border: "1px solid #fca5a5",
-                      color: "#1e293b",
+                      border: "1px solid var(--color-border)",
+                      color: "var(--color-text-main)",
                     }}
                   >
                     <strong>Factura existente encontrada:</strong> Factura N°{" "}
@@ -374,8 +382,8 @@ export default function FacturasProveedorPage() {
               </div>
             )}
 
-            <div className="compras-table-wrap" style={{ marginBottom: "1.25rem" }}>
-              <table className="compras-table">
+            <div className="module-table-scroll" style={{ marginBottom: "1.25rem" }}>
+              <table className="module-table">
                 <thead>
                   <tr>
                     <th>ISBN</th>
@@ -436,7 +444,7 @@ export default function FacturasProveedorPage() {
                     required
                   />
                   {calculos.emisionFutura && (
-                    <small style={{ color: "#dc2626" }}>
+                    <small style={{ color: "var(--status-danger-text)" }}>
                       La fecha de emisión no puede ser futura.
                     </small>
                   )}
@@ -454,7 +462,7 @@ export default function FacturasProveedorPage() {
                     required
                   />
                   {calculos.vencimientoAnterior && (
-                    <small style={{ color: "#dc2626" }}>
+                    <small style={{ color: "var(--status-danger-text)" }}>
                       El vencimiento no puede ser anterior a la emisión.
                     </small>
                   )}
@@ -489,15 +497,7 @@ export default function FacturasProveedorPage() {
                 </div>
               </div>
 
-              <div
-                style={{
-                  padding: "1rem 1.25rem",
-                  borderRadius: "10px",
-                  background: "#f8fafc",
-                  border: "1px solid #e2e8f0",
-                  marginBottom: "1.25rem",
-                }}
-              >
+              <div className="compras-summary-box">
                 <h3 style={{ marginTop: 0, marginBottom: "0.5rem", fontSize: "1rem" }}>
                   Resumen de la factura a registrar
                 </h3>
@@ -526,7 +526,7 @@ export default function FacturasProveedorPage() {
               <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.75rem" }}>
                 <button
                   type="submit"
-                  className="compras-btn compras-btn--primary"
+                  className="module-primary-button"
                   disabled={guardando}
                 >
                   {guardando ? "Registrando factura..." : "Confirmar y registrar factura"}
@@ -536,7 +536,7 @@ export default function FacturasProveedorPage() {
           </section>
         )}
 
-        <section className="compras-panel" style={{ marginTop: "1.5rem" }}>
+        <section className="erp-card inventory-table-panel">
           <div className="compras-panel-header">
             <div>
               <h2>Facturas de proveedor registradas</h2>
@@ -545,10 +545,10 @@ export default function FacturasProveedorPage() {
           </div>
 
           {facturasRegistradas.length === 0 ? (
-            <p className="compras-empty">No hay facturas registradas.</p>
+            <p className="erp-empty">No hay facturas registradas.</p>
           ) : (
-            <div className="compras-table-wrap">
-              <table className="compras-table">
+            <div className="module-table-scroll">
+              <table className="module-table">
                 <thead>
                   <tr>
                     <th>ID</th>
@@ -575,6 +575,14 @@ export default function FacturasProveedorPage() {
                     const ivaVal = Number(f.Iva ?? f.iva ?? 0);
                     const total = Number(f.MontoTotal ?? f.monto_total ?? 0);
                     const estado = f.EstadoPago ?? f.estado_pago;
+                    const badgeTipo =
+                      estado === "pagada" || estado === "conciliada"
+                        ? "success"
+                        : estado === "con discrepancias"
+                        ? "danger"
+                        : estado === "pendiente de conciliacion"
+                        ? "warning"
+                        : "neutral";
 
                     return (
                       <tr key={idFac}>
@@ -592,7 +600,7 @@ export default function FacturasProveedorPage() {
                           <strong>{formatCurrency(total)}</strong>
                         </td>
                         <td>
-                          <span className="compras-badge compras-badge--info">{estado}</span>
+                          <span className={`erp-status ${badgeTipo}`}>{estado}</span>
                         </td>
                       </tr>
                     );
@@ -606,4 +614,3 @@ export default function FacturasProveedorPage() {
     </ErpModuleShell>
   );
 }
-
