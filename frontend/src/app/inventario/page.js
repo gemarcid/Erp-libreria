@@ -1,17 +1,21 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { Suspense, useState, useEffect } from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useAuth } from "@/components/AuthProvider";
 import { canOpenModule } from "@/lib/module-access";
 import ErpModuleShell from "@/components/ErpModuleShell";
+import InventarioNav from "@/components/InventarioNav";
 import ErpIcon from "@/components/ErpIcon";
 import { money } from "@/lib/dashboard";
 
-export default function InventarioModule() {
+function InventarioModuleContent() {
   const { usuario } = useAuth();
+  const searchParams = useSearchParams();
   const [search, setSearch] = useState("");
   const [inventario, setInventario] = useState([]);
-  const [vistaReporte, setVistaReporte] = useState(false);
+  const vistaReporte = searchParams.get("vista") === "critico";
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
@@ -48,11 +52,12 @@ export default function InventarioModule() {
   return (
     <ErpModuleShell module="inventario" liveData title={vistaReporte ? "Títulos que requieren reposición" : "Inventario de Libros"}
       description={vistaReporte ? "Listado de libros cuyas existencias se encuentran en el umbral mínimo o por debajo de él." : "Supervisa los niveles de stock, estantes y precios de venta actuales."}
+      subnav={<InventarioNav activeTab={vistaReporte ? "stock-bajo" : "catalogo"} />}
       actions={<div className="inventory-heading-actions">
         <button type="button" className="module-secondary-button" onClick={actualizar} disabled={cargando}>Actualizar</button>
-        <button type="button" className={`inventory-view-button ${vistaReporte ? "is-return" : ""}`} onClick={() => setVistaReporte((value) => !value)}>
+        <Link className={`inventory-view-button ${vistaReporte ? "is-return" : ""}`} href={vistaReporte ? "/inventario" : "/inventario?vista=critico"}>
           {vistaReporte ? "Volver al Inventario General" : "Ver Reporte de Stock Crítico"}
-        </button>
+        </Link>
       </div>}>
       <div className="inventory-screen">
       {error && <p className="ventas-message ventas-message-error" role="alert">{error}</p>}
@@ -93,5 +98,19 @@ export default function InventarioModule() {
       </section>
       </div>
     </ErpModuleShell>
+  );
+}
+
+export default function InventarioModule() {
+  return (
+    <Suspense
+      fallback={
+        <main className="erp-screen erp-auth-state" lang="es">
+          <p role="status">Cargando inventario…</p>
+        </main>
+      }
+    >
+      <InventarioModuleContent />
+    </Suspense>
   );
 }
