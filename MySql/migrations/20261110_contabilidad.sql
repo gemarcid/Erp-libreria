@@ -8,7 +8,11 @@ CREATE TABLE IF NOT EXISTS CUENTA_AUTOMATICA (
     CONSTRAINT fk_automatica_cuenta FOREIGN KEY (codigo_cuenta) REFERENCES CUENTA_CONTABLE(codigo_cuenta)
 ) ENGINE=InnoDB;
 
--- Ejecutar una vez en instalaciones existentes. Los asientos históricos quedan con NULL.
-ALTER TABLE ASIENTO
+-- Los asientos históricos quedan con NULL; el esquema base actual ya incluye el cambio.
+SET @ddl = IF(EXISTS (
+    SELECT 1 FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ASIENTO' AND COLUMN_NAME = 'clave_solicitud'
+), 'DO 0', 'ALTER TABLE ASIENTO
     ADD COLUMN clave_solicitud CHAR(36),
-    ADD CONSTRAINT uk_asiento_solicitud UNIQUE (id_usuario, clave_solicitud);
+    ADD CONSTRAINT uk_asiento_solicitud UNIQUE (id_usuario, clave_solicitud)');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;

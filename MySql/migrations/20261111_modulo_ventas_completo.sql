@@ -2,8 +2,6 @@
 -- MIGRACIÓN: Módulo de Ventas Completo (5 Pantallas y 5 Reportes)
 -- =====================================================================
 
-USE erp_libreria;
-
 -- 1. Ampliar campos comerciales en CLIENTE si no existen
 SET @dbname = DATABASE();
 SET @tablename = 'CLIENTE';
@@ -43,9 +41,18 @@ CREATE TABLE IF NOT EXISTS PROMOCION (
     CONSTRAINT fk_promocion_libro FOREIGN KEY (isbn) REFERENCES LIBRO(isbn) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
--- 3. Insertar datos de prueba para promociones si está vacía
-INSERT IGNORE INTO PROMOCION (id_promocion, nombre, descripcion, tipo, valor, categoria, isbn, fecha_inicio, fecha_fin, activo) VALUES
-(1, 'Día del Libro - 15% Descuento', '15% de descuento en todos los libros clásicos y novelas', 'porcentaje', 15.00, 'Novela', NULL, '2026-01-01', '2026-12-31', TRUE),
-(2, 'Convenio Escolar Colegios', '10% de rebaja en categoría Infantil y Textos', 'porcentaje', 10.00, 'Infantil', NULL, '2026-03-01', '2026-11-30', TRUE),
-(3, 'Promo Programadores', 'Bono de $5.000 en libros de Programación', 'monto_fijo', 5000.00, 'Programacion', NULL, '2026-01-01', '2026-12-31', TRUE),
-(4, '2x1 Sagas Juveniles', 'Lleva dos y paga uno en títulos seleccionados', '2x1', 50.00, 'Novela', '9788423341802', '2026-05-01', '2026-12-31', TRUE);
+-- 3. Carga opcional de las promociones de prueba en una tabla vacía.
+--    Activar en esta misma sesión con SET @cargar_promociones_prueba = 1;
+SET @cargar_ejemplos = COALESCE(@cargar_promociones_prueba, 0) = 1
+    AND NOT EXISTS (SELECT 1 FROM PROMOCION);
+
+INSERT INTO PROMOCION (id_promocion, nombre, descripcion, tipo, valor, categoria, isbn, fecha_inicio, fecha_fin, activo)
+SELECT ejemplos.*
+FROM (
+    SELECT 1 AS id, 'Día del Libro - 15% Descuento' AS nombre, '15% de descuento en todos los libros clásicos y novelas' AS descripcion, 'porcentaje' AS tipo, 15.00 AS valor, 'Novela' AS categoria, NULL AS isbn, '2026-01-01' AS fecha_inicio, '2026-12-31' AS fecha_fin, TRUE AS activo
+    UNION ALL SELECT 2, 'Convenio Escolar Colegios', '10% de rebaja en categoría Infantil y Textos', 'porcentaje', 10.00, 'Infantil', NULL, '2026-03-01', '2026-11-30', TRUE
+    UNION ALL SELECT 3, 'Promo Programadores', 'Bono de $5.000 en libros de Programación', 'monto_fijo', 5000.00, 'Programacion', NULL, '2026-01-01', '2026-12-31', TRUE
+    UNION ALL SELECT 4, '2x1 Sagas Juveniles', 'Lleva dos y paga uno en títulos seleccionados', '2x1', 50.00, 'Novela', '9788423341802', '2026-05-01', '2026-12-31', TRUE
+) AS ejemplos
+WHERE @cargar_ejemplos
+    AND (ejemplos.isbn IS NULL OR EXISTS (SELECT 1 FROM LIBRO WHERE isbn = ejemplos.isbn));

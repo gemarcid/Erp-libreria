@@ -69,12 +69,13 @@ class UserManagementIntegrationTest
     static int Main(string[] args) {
         var root=Path.GetFullPath(args[0]); var config=new XmlDocument(); config.Load(Path.Combine(root,"ConnectionStrings.config"));
         var builder=new MySqlConnectionStringBuilder(config.SelectSingleNode("/connectionStrings/add[@name='ConexionMySQL']").Attributes["connectionString"].Value) { ConnectionTimeout=5 };
+        bool migrate=args.Length>1 && args[1]=="--migrate";
+        if(migrate) builder.AllowUserVariables=true;
         using(var c=new MySqlConnection(builder.ConnectionString)) {
             c.Open();
-            if(args.Length>1 && args[1]=="--migrate") {
+            if(migrate) {
                 using(var cmd=new MySqlCommand(File.ReadAllText(Path.Combine(root,"..","MySql","migrations","20261008_cliente_role.sql")),c)) cmd.ExecuteNonQuery();
-                if(Convert.ToInt32(Scalar(c,"SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='USUARIO' AND column_name='id_cliente'"))==0)
-                    using(var cmd=new MySqlCommand(File.ReadAllText(Path.Combine(root,"..","MySql","migrations","20261008_usuario_cliente.sql")),c)) cmd.ExecuteNonQuery();
+                using(var cmd=new MySqlCommand(File.ReadAllText(Path.Combine(root,"..","MySql","migrations","20261008_usuario_cliente.sql")),c)) cmd.ExecuteNonQuery();
                 Console.WriteLine("PASS: perfil Cliente y vínculo con Ventas configurados."); return 0;
             }
             int adminRole=Convert.ToInt32(Scalar(c,"SELECT id_rol FROM ROL WHERE LOWER(nombre) IN ('administrador','admin','administradora') ORDER BY id_rol LIMIT 1"));
