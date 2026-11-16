@@ -43,11 +43,24 @@ namespace backend.Models
                 }
                 using (var command = new MySqlCommand(@"SELECT
                     (SELECT COUNT(*) FROM LIBRO WHERE activo = TRUE AND stock_actual <= stock_minimo) AS stock,
-                    (SELECT COALESCE(SUM(monto_total),0) FROM FACTURA_PROVEEDOR WHERE estado_pago = 'pendiente') AS payable,
+                    (SELECT COALESCE(SUM(monto_total),0) FROM FACTURA_PROVEEDOR WHERE estado_pago <> 'pagada') AS payable,
                     pending.orders, pending.receipts FROM (
                         SELECT COALESCE(SUM(CASE WHEN oc.estado = 'pendiente' THEN 1 ELSE 0 END),0) AS orders,
-                        COALESCE(SUM(CASE WHEN oc.estado = 'aprobada'
-                            AND NOT EXISTS (SELECT 1 FROM RECEPCION r WHERE r.id_oc = oc.id_oc)
+                        COALESCE(SUM(CASE WHEN oc.estado IN ('aprobada', 'recibida parcial')
+                            AND EXISTS (
+                                SELECT 1
+                                FROM DETALLE_OC doc
+                                WHERE doc.id_oc = oc.id_oc
+                                  AND doc.cantidad > COALESCE((
+                                      SELECT SUM(m.cantidad)
+                                      FROM MOVIMIENTO_STOCK m
+                                      INNER JOIN RECEPCION r ON m.id_recepcion = r.id_recepcion
+                                      WHERE r.id_oc = oc.id_oc
+                                        AND m.isbn = doc.isbn
+                                        AND m.tipo_movimiento = 'entrada'
+                                        AND m.motivo = 'compra'
+                                  ), 0)
+                            )
                             THEN 1 ELSE 0 END),0) AS receipts FROM ORDEN_COMPRA oc
                     ) pending", connection, transaction))
                 using (var reader = command.ExecuteReader())

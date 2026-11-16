@@ -1,0 +1,125 @@
+/* Estilos específicos del módulo de Compras alineados con erp.css y modules.css */
+
+.compras-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.compras-panel-header h2 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-text-main);
+  margin: 0;
+}
+
+.compras-panel-header p {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.compras-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.compras-field label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.compras-input,
+.compras-select {
+  width: 100%;
+  min-width: 0;
+  min-height: 39px;
+  padding: 8px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 7px;
+  background: var(--color-surface-card);
+  color: var(--color-text-main);
+  font: inherit;
+  font-size: 13px;
+}
+
+.compras-input:focus-visible,
+.compras-select:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.compras-kpi-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 18px 20px;
+}
+
+.compras-kpi-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--color-text-muted);
+}
+
+.compras-kpi-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--color-text-main);
+  font-variant-numeric: tabular-nums;
+}
+
+.compras-kpi-card small {
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+.compras-alert-warning {
+  padding: 13px 15px;
+  border-radius: 10px;
+  font-size: 0.92rem;
+  background: var(--status-warning-bg);
+  color: var(--status-warning-text);
+  border: 1px solid #ecd6b3;
+}
+
+.compras-summary-box {
+  padding: 16px 18px;
+  border-radius: 10px;
+  background: #faf8f8;
+  border: 1px solid var(--color-border);
+  margin-bottom: 16px;
+}
+
+.compras-summary-box--ok {
+  background: var(--status-success-bg);
+  border-color: #c5dec9;
+}
+
+.erp-module-screen .module-table tbody tr.is-selected {
+  background: var(--status-danger-bg);
+}
+
+.compras-readonly-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid #ecd6b3;
+  background: var(--status-warning-bg);
+  color: var(--status-warning-text);
+  font-size: 12px;
+  font-weight: 600;
+}

@@ -100,7 +100,7 @@ namespace backend.Controllers
                                 MIN(oc.fecha) AS primera_compra,
                                 MAX(oc.fecha) AS ultima_compra
                             FROM ORDEN_COMPRA oc
-                            WHERE oc.estado IN ('aprobada', 'recibida')
+                            WHERE oc.estado IN ('aprobada', 'recibida parcial', 'recibida')
                               AND oc.fecha >= @desde
                               AND oc.fecha <= @hasta" + filtroProveedorSql + @"
                             GROUP BY oc.id_proveedor
@@ -112,7 +112,7 @@ namespace backend.Controllers
                                 SUM(doc.cantidad) AS unidades_compradas
                             FROM ORDEN_COMPRA oc
                             INNER JOIN DETALLE_OC doc ON oc.id_oc = doc.id_oc
-                            WHERE oc.estado IN ('aprobada', 'recibida')
+                            WHERE oc.estado IN ('aprobada', 'recibida parcial', 'recibida')
                               AND oc.fecha >= @desde
                               AND oc.fecha <= @hasta" + filtroProveedorSql + @"
                             GROUP BY oc.id_proveedor

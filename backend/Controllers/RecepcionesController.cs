@@ -26,7 +26,7 @@ namespace backend.Controllers
                     SessionAccess.RequireModule(new HttpRequestWrapper(HttpContext.Current.Request), conn, "compras", SecurityPolicy.Read);
 
                     const string sql = @"
-                        SELECT oc.id_oc, oc.id_proveedor, p.razon_social,
+                        SELECT oc.id_oc, oc.id_proveedor, p.razon_social, oc.estado,
                                oc.fecha, oc.fecha_entrega,
                                doc.isbn, l.titulo, doc.cantidad AS cantidad_pedida,
                                COALESCE((
@@ -40,7 +40,7 @@ namespace backend.Controllers
                         INNER JOIN PROVEEDOR p ON oc.id_proveedor = p.id_proveedor
                         INNER JOIN DETALLE_OC doc ON oc.id_oc = doc.id_oc
                         INNER JOIN LIBRO l ON doc.isbn = l.isbn
-                        WHERE oc.estado = 'aprobada'
+                        WHERE oc.estado IN ('aprobada', 'recibida parcial')
                         ORDER BY oc.id_oc DESC, l.titulo";
 
                     using (var cmd = new MySqlCommand(sql, conn))
@@ -59,6 +59,7 @@ namespace backend.Controllers
                                     IdOc = idOc,
                                     IdProveedor = Convert.ToInt32(reader["id_proveedor"]),
                                     ProveedorNombre = reader["razon_social"].ToString(),
+                                    Estado = reader["estado"].ToString(),
                                     Fecha = Convert.ToDateTime(reader["fecha"]).ToString("yyyy-MM-dd"),
                                     FechaEntrega = reader["fecha_entrega"] != DBNull.Value
                                         ? Convert.ToDateTime(reader["fecha_entrega"]).ToString("yyyy-MM-dd")
@@ -81,6 +82,8 @@ namespace backend.Controllers
                             });
                         }
                     }
+
+                    resultado.RemoveAll(o => !o.Lineas.Exists(l => l.CantidadPendiente > 0));
                 }
 
                 return Ok(resultado);
@@ -140,11 +143,11 @@ namespace backend.Controllers
                                 if (orden == null)
                                 {
                                     string estado = reader["estado"].ToString();
-                                    if (estado != "aprobada")
+                                    if (estado != "aprobada" && estado != "recibida parcial")
                                     {
-                                        return Content(HttpStatusCode.BadRequest, new
+                                        return Content(HttpStatusCode.Conflict, new
                                         {
-                                          error = $"La orden #{id} no está disponible para recepción (estado actual: '{estado}'). Solo se pueden recibir órdenes en estado 'aprobada'."
+                                            error = $"La orden #{id} no está disponible para recepción (estado actual: '{estado}'). Solo se pueden recibir órdenes en estado 'aprobada' o 'recibida parcial'."
                                         });
                                     }
 
@@ -153,6 +156,7 @@ namespace backend.Controllers
                                         IdOc = id,
                                         IdProveedor = Convert.ToInt32(reader["id_proveedor"]),
                                         ProveedorNombre = reader["razon_social"].ToString(),
+                                        Estado = estado,
                                         Fecha = Convert.ToDateTime(reader["fecha"]).ToString("yyyy-MM-dd"),
                                         FechaEntrega = reader["fecha_entrega"] != DBNull.Value
                                             ? Convert.ToDateTime(reader["fecha_entrega"]).ToString("yyyy-MM-dd")
@@ -300,12 +304,12 @@ namespace backend.Controllers
                                 }
                             }
 
-                            if (estadoActual != "aprobada")
+                            if (estadoActual != "aprobada" && estadoActual != "recibida parcial")
                             {
                                 trans.Rollback();
-                                return Content(HttpStatusCode.BadRequest, new
+                                return Content(HttpStatusCode.Conflict, new
                                 {
-                                    error = $"La orden de compra #{dto.IdOc} no está en estado 'aprobada' (estado actual: '{estadoActual}')."
+                                    error = $"La orden de compra #{dto.IdOc} no está disponible para recepción (estado actual: '{estadoActual}'). Solo se aceptan órdenes en estado 'aprobada' o 'recibida parcial'."
                                 });
                             }
 
@@ -466,18 +470,18 @@ namespace backend.Controllers
                                 }
                             }
 
-                            if (ordenCompleta)
-                            {
-                                const string updateOcSql = @"
-                                    UPDATE ORDEN_COMPRA
-                                    SET estado = 'recibida'
-                                    WHERE id_oc = @id AND estado = 'aprobada';";
+                            string nuevoEstadoOc = ordenCompleta ? "recibida" : "recibida parcial";
 
-                                using (var cmdOc = new MySqlCommand(updateOcSql, conn, trans))
-                                {
-                                    cmdOc.Parameters.AddWithValue("@id", dto.IdOc);
-                                    cmdOc.ExecuteNonQuery();
-                                }
+                            const string updateOcSql = @"
+                                UPDATE ORDEN_COMPRA
+                                SET estado = @nuevo_estado
+                                WHERE id_oc = @id AND estado IN ('aprobada', 'recibida parcial');";
+
+                            using (var cmdOc = new MySqlCommand(updateOcSql, conn, trans))
+                            {
+                                cmdOc.Parameters.AddWithValue("@nuevo_estado", nuevoEstadoOc);
+                                cmdOc.Parameters.AddWithValue("@id", dto.IdOc);
+                                cmdOc.ExecuteNonQuery();
                             }
 
                             SecurityPolicy.Log(conn, trans, userId, "compras", "Registrar recepción", "Recepción #" + nuevaRecepcionId);
@@ -491,8 +495,8 @@ namespace backend.Controllers
                                 id_oc = dto.IdOc,
                                 idOc = dto.IdOc,
                                 completa = ordenCompleta,
-                                estado_orden = ordenCompleta ? "recibida" : "aprobada",
-                                estadoOrden = ordenCompleta ? "recibida" : "aprobada",
+                                estado_orden = nuevoEstadoOc,
+                                estadoOrden = nuevoEstadoOc,
                                 mensaje = ordenCompleta
                                     ? $"Recepción #{nuevaRecepcionId} registrada. La orden de compra #{dto.IdOc} ha sido completada en su totalidad."
                                     : $"Recepción parcial #{nuevaRecepcionId} registrada exitosamente para la orden #{dto.IdOc}."
